@@ -17,8 +17,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingTop="12dp"
-            android:paddingBottom="104dp">
+            android:paddingTop="8dp"
+            android:paddingBottom="100dp">
 
             <com.google.android.material.card.MaterialCardView
                 style="@style/Widget.Material3.CardView.Elevated"
@@ -26,7 +26,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="16dp"
                 app:cardBackgroundColor="@android:color/transparent"
-                app:cardCornerRadius="28dp"
+                app:cardCornerRadius="26dp"
                 app:cardElevation="0dp"
                 app:strokeColor="@color/md_theme_outlineVariant"
                 app:strokeWidth="1dp">
@@ -36,7 +36,7 @@
                     android:layout_height="wrap_content"
                     android:background="@drawable/bg_stats_card"
                     android:orientation="vertical"
-                    android:padding="22dp">
+                    android:padding="18dp">
 
                     <TextView
                         android:id="@+id/text_board_title"
@@ -44,12 +44,12 @@
                         android:layout_height="wrap_content"
                         android:text="@string/home_balance_title"
                         android:textColor="@color/text_secondary"
-                        android:textSize="14sp" />
+                        android:textSize="13sp" />
 
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
+                        android:layout_marginTop="8dp"
                         android:gravity="bottom"
                         android:orientation="horizontal">
 
@@ -57,10 +57,10 @@
                             android:id="@+id/text_amount_sign"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginBottom="5dp"
+                            android:layout_marginBottom="4dp"
                             android:text="+"
                             android:textColor="@color/income"
-                            android:textSize="24sp"
+                            android:textSize="22sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -68,10 +68,10 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="2dp"
-                            android:layout_marginBottom="5dp"
+                            android:layout_marginBottom="4dp"
                             android:text="@string/currency_symbol"
                             android:textColor="@color/income"
-                            android:textSize="24sp"
+                            android:textSize="22sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -81,14 +81,14 @@
                             android:layout_marginStart="2dp"
                             android:text="0.00"
                             android:textColor="@color/income"
-                            android:textSize="36sp"
+                            android:textSize="32sp"
                             android:textStyle="bold" />
                     </LinearLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="22dp"
+                        android:layout_marginTop="18dp"
                         android:orientation="horizontal">
 
                         <LinearLayout
@@ -102,16 +102,16 @@
                                 android:layout_height="wrap_content"
                                 android:text="@string/today_income"
                                 android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
+                                android:textSize="11sp" />
 
                             <TextView
                                 android:id="@+id/text_today_income"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="6dp"
+                                android:layout_marginTop="4dp"
                                 android:text="+0.00"
                                 android:textColor="@color/income"
-                                android:textSize="18sp"
+                                android:textSize="17sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
@@ -127,16 +127,16 @@
                                 android:layout_height="wrap_content"
                                 android:text="@string/today_expense"
                                 android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
+                                android:textSize="11sp" />
 
                             <TextView
                                 android:id="@+id/text_today_expense"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="6dp"
+                                android:layout_marginTop="4dp"
                                 android:text="-0.00"
                                 android:textColor="@color/expense"
-                                android:textSize="18sp"
+                                android:textSize="17sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
@@ -150,23 +150,23 @@
                             android:focusable="true"
                             android:gravity="end"
                             android:orientation="vertical"
-                            android:padding="8dp">
+                            android:padding="6dp">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/month_budget"
                                 android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
+                                android:textSize="11sp" />
 
                             <TextView
                                 android:id="@+id/text_budget_label"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="6dp"
+                                android:layout_marginTop="4dp"
                                 android:text="@string/budget_not_set"
                                 android:textColor="@color/text_primary"
-                                android:textSize="18sp"
+                                android:textSize="17sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
                     </LinearLayout>
@@ -175,7 +175,7 @@
                         android:id="@+id/layout_budget"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="18dp"
+                        android:layout_marginTop="14dp"
                         android:orientation="vertical"
                         android:visibility="gone">
 
@@ -191,7 +191,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:textColor="@color/text_secondary"
-                                android:textSize="13sp"
+                                android:textSize="12sp"
                                 android:textStyle="bold" />
 
                             <TextView
@@ -200,7 +200,7 @@
                                 android:layout_height="wrap_content"
                                 android:text="0%"
                                 android:textColor="@color/text_primary"
-                                android:textSize="13sp"
+                                android:textSize="12sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
@@ -208,8 +208,8 @@
                             android:id="@+id/progress_budget"
                             style="?android:attr/progressBarStyleHorizontal"
                             android:layout_width="match_parent"
-                            android:layout_height="8dp"
-                            android:layout_marginTop="10dp"
+                            android:layout_height="6dp"
+                            android:layout_marginTop="8dp"
                             android:max="100"
                             android:progress="0"
                             android:progressDrawable="@drawable/progress_budget" />
@@ -220,8 +220,8 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
-                android:layout_marginBottom="10dp"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="8dp"
                 android:layout_marginHorizontal="16dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
@@ -232,7 +232,7 @@
                     android:layout_weight="1"
                     android:text="@string/recent_records"
                     android:textColor="@color/text_primary"
-                    android:textSize="20sp"
+                    android:textSize="18sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -241,7 +241,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/view_all"
                     android:textColor="@color/md_theme_secondary"
-                    android:textSize="14sp" />
+                    android:textSize="13sp" />
             </LinearLayout>
 
             <androidx.recyclerview.widget.RecyclerView
@@ -256,13 +256,13 @@
                 android:id="@+id/layout_empty"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="60dp"
+                android:layout_marginTop="48dp"
                 android:gravity="center"
                 android:orientation="vertical">
 
                 <ImageView
-                    android:layout_width="88dp"
-                    android:layout_height="88dp"
+                    android:layout_width="80dp"
+                    android:layout_height="80dp"
                     android:alpha="0.8"
                     android:src="@drawable/ic_other"
                     app:tint="@color/text_tertiary" />
@@ -273,7 +273,7 @@
                     android:layout_marginTop="16dp"
                     android:text="@string/empty_records"
                     android:textColor="@color/text_primary"
-                    android:textSize="16sp"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -282,7 +282,7 @@
                     android:layout_marginTop="8dp"
                     android:text="@string/empty_records_hint"
                     android:textColor="@color/text_secondary"
-                    android:textSize="14sp" />
+                    android:textSize="13sp" />
             </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
@@ -293,7 +293,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_margin="18dp"
+        android:layout_margin="16dp"
         android:contentDescription="@string/add_entry_description"
         android:text="@string/add_entry"
         app:elevation="0dp"

@@ -3,12 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
         android:id="@+id/action_export"
-        android:icon="@android:drawable/ic_menu_save"
+        android:icon="@drawable/ic_action_export"
         android:title="@string/report_export"
         app:showAsAction="always" />
     <item
         android:id="@+id/action_reset"
-        android:icon="@android:drawable/ic_menu_delete"
+        android:icon="@drawable/ic_action_reset"
         android:title="@string/reset_confirm"
         app:showAsAction="always" />
 </menu>
