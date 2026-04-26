@@ -42,6 +42,7 @@
     <color name="text_primary">#F4F7FB</color>
     <color name="text_secondary">#97A4BA</color>
     <color name="text_tertiary">#6D778A</color>
+    <color name="icon_muted">#AAB4C8</color>
 
     <color name="income">#71D6B5</color>
     <color name="income_container">#17362F</color>
