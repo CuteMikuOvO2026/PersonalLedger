@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="TextAppearance.PersonalLedger.TitleLarge" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:fontFamily">@font/app_ui_font</item>
+        <item name="fontFamily">@font/app_ui_font</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TextAppearance.PersonalLedger.TitleMedium" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:fontFamily">@font/app_ui_font</item>
+        <item name="fontFamily">@font/app_ui_font</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TextAppearance.PersonalLedger.BodyLarge" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:fontFamily">@font/app_ui_font</item>
+        <item name="fontFamily">@font/app_ui_font</item>
+    </style>
+
+    <style name="TextAppearance.PersonalLedger.BodyMedium" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:fontFamily">@font/app_ui_font</item>
+        <item name="fontFamily">@font/app_ui_font</item>
+    </style>
+
+    <style name="Widget.PersonalLedger.BottomNavigation" parent="Widget.Material3.BottomNavigationView">
+        <item name="android:background">@color/surface_container</item>
+        <item name="itemActiveIndicatorStyle">@style/Widget.PersonalLedger.BottomNavigation.ActiveIndicator</item>
+        <item name="itemIconTint">@color/bottom_nav_item_tint</item>
+        <item name="itemTextColor">@color/bottom_nav_item_tint</item>
+    </style>
+
+    <style name="Widget.PersonalLedger.BottomNavigation.ActiveIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@color/surface_chip</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.PersonalLedger.Full</item>
+    </style>
+
+    <style name="Widget.PersonalLedger.Fab" parent="Widget.Material3.ExtendedFloatingActionButton.Icon.Primary">
+        <item name="android:textColor">@color/white</item>
+        <item name="backgroundTint">@color/md_theme_primary</item>
+        <item name="iconTint">@color/white</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.PersonalLedger.Large</item>
+    </style>
+
+    <style name="Widget.PersonalLedger.TabLayout" parent="Widget.Material3.TabLayout">
+        <item name="tabBackground">@drawable/bg_tab_item</item>
+        <item name="tabIndicator">@drawable/bg_tab_indicator</item>
+        <item name="tabIndicatorFullWidth">false</item>
+        <item name="tabTextAppearance">@style/TextAppearance.PersonalLedger.BodyLarge</item>
+        <item name="tabTextColor">@color/text_secondary</item>
+        <item name="tabSelectedTextColor">@color/text_primary</item>
+    </style>
+
+    <style name="Widget.PersonalLedger.OutlinedInput" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxBackgroundColor">@color/surface_container_low</item>
+        <item name="boxStrokeColor">@color/md_theme_outline</item>
+        <item name="hintTextColor">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_secondary</item>
+    </style>
+
+    <style name="ShapeAppearance.PersonalLedger.Large" parent="ShapeAppearance.Material3.LargeComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">24dp</item>
+    </style>
+
+    <style name="ShapeAppearance.PersonalLedger.Full" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">999dp</item>
+    </style>
+</resources>

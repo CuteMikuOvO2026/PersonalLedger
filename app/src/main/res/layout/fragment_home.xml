@@ -1,101 +1,96 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/coordinator_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:id="@+id/coordinator_layout">
+    android:background="?android:attr/colorBackground">
 
-    <!-- 主内容区域 -->
     <androidx.core.widget.NestedScrollView
         android:id="@+id/nested_scroll_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:clipToPadding="false"
         android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingTop="16dp"
-            android:paddingBottom="88dp">
+            android:paddingTop="12dp"
+            android:paddingBottom="104dp">
 
-            <!-- 统计看板卡片 -->
             <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Elevated"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="16dp"
-                app:cardCornerRadius="24dp"
-                app:cardElevation="4dp"
-                style="@style/Widget.Material3.CardView.Elevated">
+                app:cardBackgroundColor="@android:color/transparent"
+                app:cardCornerRadius="28dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/md_theme_outlineVariant"
+                app:strokeWidth="1dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:background="@drawable/bg_stats_card"
                     android:orientation="vertical"
-                    android:padding="20dp"
-                    android:background="@drawable/gradient_stats_background">
+                    android:padding="22dp">
 
-                    <!-- 看板标题 -->
                     <TextView
                         android:id="@+id/text_board_title"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="本月结余"
-                        android:textColor="@android:color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
+                        android:text="@string/home_balance_title"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp" />
 
-                    <!-- 总资产 -->
                     <LinearLayout
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:layout_marginTop="8dp">
+                        android:layout_marginTop="10dp"
+                        android:gravity="bottom"
+                        android:orientation="horizontal">
 
-                        <LinearLayout
+                        <TextView
+                            android:id="@+id/text_amount_sign"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal">
+                            android:layout_marginBottom="5dp"
+                            android:text="+"
+                            android:textColor="@color/income"
+                            android:textSize="24sp"
+                            android:textStyle="bold" />
 
-                            <TextView
-                                android:id="@+id/text_amount_sign"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text=""
-                                android:textColor="@android:color/white"
-                                android:textSize="24sp"
-                                android:textStyle="bold" />
+                        <TextView
+                            android:id="@+id/text_amount_currency"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="2dp"
+                            android:layout_marginBottom="5dp"
+                            android:text="@string/currency_symbol"
+                            android:textColor="@color/income"
+                            android:textSize="24sp"
+                            android:textStyle="bold" />
 
-                            <TextView
-                                android:id="@+id/text_amount_currency"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="¥"
-                                android:textColor="@android:color/white"
-                                android:textSize="24sp"
-                                android:textStyle="bold"
-                                android:layout_marginStart="2dp" />
-
-                            <TextView
-                                android:id="@+id/text_amount"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="0.00"
-                                android:textColor="@android:color/white"
-                                android:textSize="36sp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
+                        <TextView
+                            android:id="@+id/text_amount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="2dp"
+                            android:text="0.00"
+                            android:textColor="@color/income"
+                            android:textSize="36sp"
+                            android:textStyle="bold" />
                     </LinearLayout>
 
-                    <!-- 今日收支和预算 -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="20dp"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
+                        android:layout_marginTop="22dp"
+                        android:orientation="horizontal">
 
-                        <!-- 今日收入 -->
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
@@ -105,117 +100,108 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="今日收入"
-                                android:textColor="@android:color/white"
-                                android:textSize="12sp"
-                                android:alpha="0.75" />
+                                android:text="@string/today_income"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/text_today_income"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
+                                android:layout_marginTop="6dp"
                                 android:text="+0.00"
-                                android:textColor="#A5D6A7"
+                                android:textColor="@color/income"
                                 android:textSize="18sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
-                        <!-- 今日支出 -->
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:gravity="center">
+                            android:gravity="center_horizontal"
+                            android:orientation="vertical">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="今日支出"
-                                android:textColor="@android:color/white"
-                                android:textSize="12sp"
-                                android:alpha="0.75" />
+                                android:text="@string/today_expense"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/text_today_expense"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
+                                android:layout_marginTop="6dp"
                                 android:text="-0.00"
-                                android:textColor="#FFCDD2"
+                                android:textColor="@color/expense"
                                 android:textSize="18sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
-                        <!-- 本月预算 -->
                         <LinearLayout
                             android:id="@+id/layout_budget_click"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:gravity="end"
+                            android:background="?attr/selectableItemBackgroundBorderless"
                             android:clickable="true"
                             android:focusable="true"
-                            android:background="?android:attr/selectableItemBackgroundBorderless"
-                            android:padding="8dp"
-                            android:layout_marginEnd="-8dp">
+                            android:gravity="end"
+                            android:orientation="vertical"
+                            android:padding="8dp">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="本月预算"
-                                android:textColor="@android:color/white"
-                                android:textSize="12sp"
-                                android:alpha="0.75" />
+                                android:text="@string/month_budget"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/text_budget_label"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
-                                android:text="未设置"
-                                android:textColor="@android:color/white"
+                                android:layout_marginTop="6dp"
+                                android:text="@string/budget_not_set"
+                                android:textColor="@color/text_primary"
                                 android:textSize="18sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
                     </LinearLayout>
 
-                    <!-- 预算进度条 -->
                     <LinearLayout
                         android:id="@+id/layout_budget"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
+                        android:layout_marginTop="18dp"
                         android:orientation="vertical"
                         android:visibility="gone">
 
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <TextView
                                 android:id="@+id/text_expense_this_month"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:text="已支出 0.00"
-                                android:textColor="@android:color/white"
+                                android:textColor="@color/text_secondary"
                                 android:textSize="13sp"
-                                android:alpha="0.9" />
+                                android:textStyle="bold" />
 
                             <TextView
                                 android:id="@+id/text_budget_percent"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="0%"
-                                android:textColor="@android:color/white"
+                                android:textColor="@color/text_primary"
                                 android:textSize="13sp"
-                                android:textStyle="bold"
-                                android:alpha="0.9" />
+                                android:textStyle="bold" />
                         </LinearLayout>
 
                         <ProgressBar
@@ -223,7 +209,7 @@
                             style="?android:attr/progressBarStyleHorizontal"
                             android:layout_width="match_parent"
                             android:layout_height="8dp"
-                            android:layout_marginTop="8dp"
+                            android:layout_marginTop="10dp"
                             android:max="100"
                             android:progress="0"
                             android:progressDrawable="@drawable/progress_budget" />
@@ -231,35 +217,33 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 最近记录标题 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
+                android:layout_marginTop="28dp"
+                android:layout_marginBottom="10dp"
                 android:layout_marginHorizontal="16dp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="8dp">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
                 <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="最近记录"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="?android:attr/textColorPrimary" />
+                    android:text="@string/recent_records"
+                    android:textColor="@color/text_primary"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/text_view_all"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="查看全部"
-                    android:textSize="14sp"
-                    android:textColor="?attr/colorPrimary" />
+                    android:text="@string/view_all"
+                    android:textColor="@color/md_theme_secondary"
+                    android:textSize="14sp" />
             </LinearLayout>
 
-            <!-- 历史记录列表 -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/recycler_view"
                 android:layout_width="match_parent"
@@ -268,53 +252,51 @@
                 android:nestedScrollingEnabled="false"
                 android:paddingBottom="8dp" />
 
-            <!-- 空状态 -->
             <LinearLayout
                 android:id="@+id/layout_empty"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="48dp"
+                android:layout_marginTop="60dp"
                 android:gravity="center"
                 android:orientation="vertical">
 
                 <ImageView
-                    android:layout_width="96dp"
-                    android:layout_height="96dp"
-                    android:alpha="0.3"
-                    app:tint="?android:attr/textColorSecondary"
-                    android:src="@android:drawable/ic_menu_agenda" />
+                    android:layout_width="88dp"
+                    android:layout_height="88dp"
+                    android:alpha="0.8"
+                    android:src="@drawable/ic_other"
+                    app:tint="@color/text_tertiary" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    android:text="暂无记录"
+                    android:text="@string/empty_records"
+                    android:textColor="@color/text_primary"
                     android:textSize="16sp"
-                    android:textColor="?android:attr/textColorSecondary" />
+                    android:textStyle="bold" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="点击右下角按钮开始记账"
-                    android:textSize="14sp"
-                    android:textColor="?android:attr/textColorTertiary" />
+                    android:text="@string/empty_records_hint"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp" />
             </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <!-- 悬浮记账按钮 -->
     <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
         android:id="@+id/fab_add"
+        style="@style/Widget.PersonalLedger.Fab"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_margin="16dp"
-        android:text="记账"
-        android:contentDescription="添加记录"
-        app:icon="@android:drawable/ic_input_add"
-        app:elevation="6dp"
-        app:pressedTranslationZ="12dp" />
+        android:layout_margin="18dp"
+        android:contentDescription="@string/add_entry_description"
+        android:text="@string/add_entry"
+        app:elevation="0dp"
+        app:icon="@android:drawable/ic_input_add" />
 
-    <!-- 记账输入 BottomSheet -->
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

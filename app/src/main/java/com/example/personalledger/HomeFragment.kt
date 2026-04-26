@@ -1,7 +1,6 @@
 package com.example.personalledger
 
 import android.content.res.ColorStateList
-import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
 import android.view.LayoutInflater
@@ -13,15 +12,19 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.core.view.MenuProvider
+import androidx.core.content.ContextCompat
+import androidx.core.view.setPadding
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
+import androidx.core.view.MenuProvider
+import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.personalledger.databinding.FragmentHomeBinding
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlin.math.abs
 
 class HomeFragment : Fragment() {
 
@@ -56,7 +59,7 @@ class HomeFragment : Fragment() {
         binding.recyclerView.apply {
             layoutManager = LinearLayoutManager(context)
             adapter = ledgerAdapter
-            itemAnimator = androidx.recyclerview.widget.DefaultItemAnimator()
+            itemAnimator = DefaultItemAnimator()
         }
     }
 
@@ -78,22 +81,30 @@ class HomeFragment : Fragment() {
 
         viewModel.budget.observe(viewLifecycleOwner) { budget ->
             if (budget > 0) {
-                binding.textBudgetLabel.text = "¥$budget"
+                binding.textBudgetLabel.text = getString(
+                    R.string.budget_amount,
+                    getString(R.string.currency_symbol),
+                    budget
+                )
                 binding.layoutBudget.visibility = View.VISIBLE
             } else {
-                binding.textBudgetLabel.text = "未设置"
+                binding.textBudgetLabel.text = getString(R.string.budget_not_set)
                 binding.layoutBudget.visibility = View.GONE
             }
         }
 
         viewModel.budgetProgress.observe(viewLifecycleOwner) { progress ->
             binding.progressBudget.progress = progress.toInt()
-            binding.textBudgetPercent.text = "${progress.toInt()}%"
+            binding.textBudgetPercent.text = getString(R.string.percent_value, progress.toInt())
             updateProgressColor(progress)
         }
 
         viewModel.expenseThisMonth.observe(viewLifecycleOwner) { expense ->
-            binding.textExpenseThisMonth.text = "已支出 ¥$expense"
+            binding.textExpenseThisMonth.text = getString(
+                R.string.expense_this_month,
+                getString(R.string.currency_symbol),
+                expense
+            )
         }
     }
 
@@ -106,36 +117,31 @@ class HomeFragment : Fragment() {
         list.forEach { item ->
             if (!item.time.startsWith(monthStr)) return@forEach
             val amount = item.amount.toDoubleOrNull()?.toInt() ?: 0
-            if (item.isExpense) {
-                monthExpense += amount
-            } else {
-                monthIncome += amount
-            }
+            if (item.isExpense) monthExpense += amount else monthIncome += amount
         }
 
         val balance = monthIncome - monthExpense
-        if (balance >= 0) {
-            binding.textBoardTitle.text = "本月结余"
+        val amountColor = if (balance >= 0) {
+            binding.textBoardTitle.text = getString(R.string.home_balance_title)
             binding.textAmountSign.text = "+"
-            binding.textAmountSign.setTextColor(Color.parseColor("#A5D6A7"))
-            binding.textAmount.setTextColor(Color.parseColor("#A5D6A7"))
-            binding.textAmountCurrency.setTextColor(Color.parseColor("#A5D6A7"))
+            ContextCompat.getColor(requireContext(), R.color.income)
         } else {
-            binding.textBoardTitle.text = "本月超支"
+            binding.textBoardTitle.text = getString(R.string.home_overspend_title)
             binding.textAmountSign.text = "-"
-            binding.textAmountSign.setTextColor(Color.parseColor("#FFCDD2"))
-            binding.textAmount.setTextColor(Color.parseColor("#FFCDD2"))
-            binding.textAmountCurrency.setTextColor(Color.parseColor("#FFCDD2"))
+            ContextCompat.getColor(requireContext(), R.color.expense)
         }
 
-        binding.textAmount.text = String.format(Locale.getDefault(), "%.2f", kotlin.math.abs(balance).toDouble())
+        binding.textAmountSign.setTextColor(amountColor)
+        binding.textAmount.setTextColor(amountColor)
+        binding.textAmountCurrency.setTextColor(amountColor)
+        binding.textAmount.text = String.format(Locale.getDefault(), "%.2f", abs(balance).toDouble())
     }
 
     private fun updateProgressColor(progress: Float) {
         val tintColor = when {
-            progress >= 100 -> Color.parseColor("#D32F2F")
-            progress >= 80 -> Color.parseColor("#F57C00")
-            else -> Color.parseColor("#388E3C")
+            progress >= 100 -> ContextCompat.getColor(requireContext(), R.color.expense)
+            progress >= 80 -> ContextCompat.getColor(requireContext(), R.color.warning)
+            else -> ContextCompat.getColor(requireContext(), R.color.income)
         }
         binding.progressBudget.progressTintList = ColorStateList.valueOf(tintColor)
         binding.progressBudget.invalidate()
@@ -158,40 +164,38 @@ class HomeFragment : Fragment() {
         val currentBudget = viewModel.budget.value ?: 0
         val editText = EditText(requireContext()).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            hint = "请输入预算金额"
-            if (currentBudget > 0) {
-                setText(currentBudget.toString())
-            }
-            setPadding(64, 32, 64, 32)
+            hint = getString(R.string.enter_budget_hint)
+            if (currentBudget > 0) setText(currentBudget.toString())
+            setPadding(48, 32, 48, 32)
         }
 
         AlertDialog.Builder(requireContext())
-            .setTitle("设置本月预算")
+            .setTitle(R.string.set_month_budget)
             .setView(editText)
-            .setPositiveButton("保存") { _, _ ->
+            .setPositiveButton(R.string.save) { _, _ ->
                 val budget = editText.text.toString().toIntOrNull()
                 when {
-                    budget == null -> Toast.makeText(requireContext(), "请输入有效数字", Toast.LENGTH_SHORT).show()
-                    budget <= 0 -> Toast.makeText(requireContext(), "预算必须大于 0", Toast.LENGTH_SHORT).show()
+                    budget == null -> Toast.makeText(requireContext(), getString(R.string.enter_valid_number), Toast.LENGTH_SHORT).show()
+                    budget <= 0 -> Toast.makeText(requireContext(), getString(R.string.budget_must_positive), Toast.LENGTH_SHORT).show()
                     else -> {
                         viewModel.saveBudget(budget)
-                        Toast.makeText(requireContext(), "预算已更新", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), getString(R.string.budget_updated), Toast.LENGTH_SHORT).show()
                     }
                 }
             }
-            .setNegativeButton("取消", null)
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 
     private fun showDeleteConfirmDialog(item: LedgerItem) {
         AlertDialog.Builder(requireContext())
-            .setTitle("删除记录")
-            .setMessage("确定要删除这条记录吗？")
-            .setPositiveButton("删除") { _, _ ->
+            .setTitle(R.string.delete_record)
+            .setMessage(R.string.delete_record_confirm)
+            .setPositiveButton(R.string.delete_record) { _, _ ->
                 viewModel.deleteLedgerEntry(item)
-                Toast.makeText(context, "记录已删除", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, getString(R.string.record_deleted), Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("取消", null)
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 

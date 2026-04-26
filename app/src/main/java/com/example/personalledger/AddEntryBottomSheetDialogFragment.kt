@@ -6,10 +6,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.fragment.app.activityViewModels
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
-import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.GridLayoutManager
 import com.example.personalledger.databinding.BottomSheetInputBinding
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
@@ -54,8 +54,8 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
 
     private fun setupTabs() {
         if (binding.tabType.tabCount == 0) {
-            binding.tabType.addTab(binding.tabType.newTab().setText("支出"))
-            binding.tabType.addTab(binding.tabType.newTab().setText("收入"))
+            binding.tabType.addTab(binding.tabType.newTab().setText(R.string.type_expense))
+            binding.tabType.addTab(binding.tabType.newTab().setText(R.string.type_income))
         }
 
         binding.tabType.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
@@ -91,11 +91,7 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
     }
 
     private fun updateCategories() {
-        val categories = if (isExpense) {
-            viewModel.expenseCategories
-        } else {
-            viewModel.incomeCategories
-        }
+        val categories = if (isExpense) viewModel.expenseCategories else viewModel.incomeCategories
         categoryAdapter.submitList(categories)
     }
 
@@ -103,25 +99,27 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
         val amountStr = binding.editAmount.text?.toString()?.trim().orEmpty()
         val note = binding.editNote.text?.toString()?.trim().orEmpty()
 
-        if (amountStr.isEmpty()) {
-            Toast.makeText(context, "请输入金额", Toast.LENGTH_SHORT).show()
-            return
+        when {
+            amountStr.isEmpty() -> {
+                Toast.makeText(context, getString(R.string.enter_amount), Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            amountStr.toDoubleOrNull() == null -> {
+                Toast.makeText(context, getString(R.string.invalid_amount), Toast.LENGTH_SHORT).show()
+                return
+            }
         }
 
-        val amount = amountStr.toDoubleOrNull()
-        if (amount == null) {
-            Toast.makeText(context, "金额格式不正确", Toast.LENGTH_SHORT).show()
-            return
-        }
-
+        val amount = amountStr.toDouble()
         if (amount <= 0) {
-            Toast.makeText(context, "金额必须大于 0", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, getString(R.string.amount_must_positive), Toast.LENGTH_SHORT).show()
             return
         }
 
         val selectedCategory = categoryAdapter.getSelectedCategory()
         if (selectedCategory == null) {
-            Toast.makeText(context, "请选择分类", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, getString(R.string.select_category), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -135,7 +133,7 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
         )
 
         viewModel.addLedgerEntry(item)
-        Toast.makeText(context, "保存成功", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, getString(R.string.save_success), Toast.LENGTH_SHORT).show()
         dismiss()
     }
 
