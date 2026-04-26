@@ -1,9 +1,10 @@
 package com.example.personalledger
 
-import android.graphics.Color
+import android.content.res.ColorStateList
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.RecyclerView
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.recyclerview.widget.RecyclerView
 import com.example.personalledger.databinding.ItemLedgerBinding
 
 class LedgerAdapter(
@@ -12,9 +13,6 @@ class LedgerAdapter(
 
     private var items: List<LedgerItem> = emptyList()
 
-    /**
-     * 更新列表数据
-     */
     fun submitList(newList: List<LedgerItem>) {
         items = newList
         notifyDataSetChanged()
@@ -35,29 +33,32 @@ class LedgerAdapter(
         private val binding: ItemLedgerBinding,
         private val onDeleteClick: (LedgerItem, Int) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
-        
+
         fun bind(item: LedgerItem, position: Int) {
-            // 设置图标和背景色
+            val context = binding.root.context
+            val containerColor = if (item.isExpense) {
+                ContextCompat.getColor(context, R.color.expense_container)
+            } else {
+                ContextCompat.getColor(context, R.color.income_container)
+            }
+            val accentColor = if (item.isExpense) {
+                ContextCompat.getColor(context, R.color.expense)
+            } else {
+                ContextCompat.getColor(context, R.color.income)
+            }
+
             binding.icon.setImageResource(item.categoryIconRes)
             binding.category.text = item.categoryName
             binding.time.text = item.time
             binding.note.text = item.note.ifEmpty { "-" }
             binding.amount.text = item.amount
+            binding.sign.text = if (item.isExpense) "-" else "+"
 
-            // 根据收支设置颜色
-            if (item.isExpense) {
-                binding.iconContainer.setCardBackgroundColor(Color.parseColor("#FFCDD2"))
-                binding.icon.setColorFilter(Color.parseColor("#D32F2F"))
-                binding.sign.setTextColor(Color.parseColor("#D32F2F"))
-                binding.amount.setTextColor(Color.parseColor("#D32F2F"))
-            } else {
-                binding.iconContainer.setCardBackgroundColor(Color.parseColor("#C8E6C9"))
-                binding.icon.setColorFilter(Color.parseColor("#388E3C"))
-                binding.sign.setTextColor(Color.parseColor("#388E3C"))
-                binding.amount.setTextColor(Color.parseColor("#388E3C"))
-            }
+            binding.iconContainer.setCardBackgroundColor(containerColor)
+            binding.icon.imageTintList = ColorStateList.valueOf(accentColor)
+            binding.sign.setTextColor(accentColor)
+            binding.amount.setTextColor(accentColor)
 
-            // 长按删除
             binding.root.setOnLongClickListener {
                 onDeleteClick(item, position)
                 true

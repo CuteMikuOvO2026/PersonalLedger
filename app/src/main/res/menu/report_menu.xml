@@ -4,11 +4,11 @@
     <item
         android:id="@+id/action_export"
         android:icon="@android:drawable/ic_menu_save"
-        android:title="导出"
+        android:title="@string/report_export"
         app:showAsAction="always" />
     <item
         android:id="@+id/action_reset"
         android:icon="@android:drawable/ic_menu_delete"
-        android:title="清空"
+        android:title="@string/reset_confirm"
         app:showAsAction="always" />
 </menu>

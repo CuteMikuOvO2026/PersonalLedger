@@ -1,9 +1,9 @@
 package com.example.personalledger
 
-import android.graphics.Color
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.RecyclerView
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.recyclerview.widget.RecyclerView
 import com.example.personalledger.databinding.ItemCategoryBinding
 
 class CategoryAdapter(
@@ -43,22 +43,25 @@ class CategoryAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(category: CategoryItem, isSelected: Boolean, position: Int) {
+            val context = binding.root.context
             binding.categoryIcon.setImageResource(category.iconRes)
             binding.categoryName.text = category.name
 
+            val selectedBackground = ContextCompat.getColor(context, R.color.surface_chip_selected)
+            val selectedText = ContextCompat.getColor(context, R.color.text_primary)
+            val defaultBackground = ContextCompat.getColor(context, R.color.surface_container_low)
+            val defaultIcon = ContextCompat.getColor(context, R.color.text_secondary)
+            val defaultText = ContextCompat.getColor(context, R.color.text_secondary)
+
             if (isSelected) {
-                binding.categoryIconContainer.setCardBackgroundColor(
-                    Color.parseColor("#667EEA")
-                )
-                binding.categoryIcon.setColorFilter(Color.WHITE)
-                binding.categoryName.setTextColor(Color.parseColor("#667EEA"))
+                binding.categoryIconContainer.setCardBackgroundColor(selectedBackground)
+                binding.categoryIcon.setColorFilter(selectedText)
+                binding.categoryName.setTextColor(selectedText)
                 binding.categoryName.textSize = 14f
             } else {
-                binding.categoryIconContainer.setCardBackgroundColor(
-                    Color.parseColor("#F5F5F5")
-                )
-                binding.categoryIcon.setColorFilter(Color.parseColor("#616161"))
-                binding.categoryName.setTextColor(Color.parseColor("#616161"))
+                binding.categoryIconContainer.setCardBackgroundColor(defaultBackground)
+                binding.categoryIcon.setColorFilter(defaultIcon)
+                binding.categoryName.setTextColor(defaultText)
                 binding.categoryName.textSize = 13f
             }
 
@@ -68,8 +71,6 @@ class CategoryAdapter(
                 notifyItemChanged(previousPosition)
                 notifyItemChanged(position)
                 onCategoryClick(category)
-                
-                // 确保不抢夺焦点
                 binding.root.isFocusable = false
                 binding.root.isFocusableInTouchMode = false
             }

@@ -2,10 +2,10 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/navigation_home"
-        android:icon="@android:drawable/ic_menu_edit"
-        android:title="记账" />
+        android:icon="@drawable/ic_nav_ledger"
+        android:title="@string/nav_ledger" />
     <item
         android:id="@+id/navigation_report"
-        android:icon="@android:drawable/ic_menu_info_details"
-        android:title="报表" />
+        android:icon="@drawable/ic_nav_report"
+        android:title="@string/nav_report" />
 </menu>
