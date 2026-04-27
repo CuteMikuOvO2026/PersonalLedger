@@ -84,7 +84,7 @@ class HomeFragment : Fragment() {
                 binding.textBudgetLabel.text = getString(
                     R.string.budget_amount,
                     getString(R.string.currency_symbol),
-                    budget
+                    String.format(Locale.getDefault(), "%.2f", budget)
                 )
                 binding.layoutBudget.visibility = View.VISIBLE
             } else {
@@ -111,12 +111,12 @@ class HomeFragment : Fragment() {
     private fun updateBoardStats(list: List<LedgerItem>) {
         val monthStr = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Calendar.getInstance().time)
 
-        var monthIncome = 0
-        var monthExpense = 0
+        var monthIncome = 0.0
+        var monthExpense = 0.0
 
         list.forEach { item ->
             if (!item.time.startsWith(monthStr)) return@forEach
-            val amount = item.amount.toDoubleOrNull()?.toInt() ?: 0
+            val amount = item.amount.toDoubleOrNull() ?: 0.0
             if (item.isExpense) monthExpense += amount else monthIncome += amount
         }
 
@@ -134,7 +134,7 @@ class HomeFragment : Fragment() {
         binding.textAmountSign.setTextColor(amountColor)
         binding.textAmount.setTextColor(amountColor)
         binding.textAmountCurrency.setTextColor(amountColor)
-        binding.textAmount.text = String.format(Locale.getDefault(), "%.2f", abs(balance).toDouble())
+        binding.textAmount.text = String.format(Locale.getDefault(), "%.2f", abs(balance))
     }
 
     private fun updateProgressColor(progress: Float) {
@@ -161,11 +161,11 @@ class HomeFragment : Fragment() {
     }
 
     private fun showBudgetDialog() {
-        val currentBudget = viewModel.budget.value ?: 0
+        val currentBudget = viewModel.budget.value ?: 0.0
         val editText = EditText(requireContext()).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             hint = getString(R.string.enter_budget_hint)
-            if (currentBudget > 0) setText(currentBudget.toString())
+            if (currentBudget > 0) setText(String.format(Locale.getDefault(), "%.2f", currentBudget))
             setPadding(48, 32, 48, 32)
         }
 
@@ -173,7 +173,7 @@ class HomeFragment : Fragment() {
             .setTitle(R.string.set_month_budget)
             .setView(editText)
             .setPositiveButton(R.string.save) { _, _ ->
-                val budget = editText.text.toString().toIntOrNull()
+                val budget = editText.text.toString().toDoubleOrNull()
                 when {
                     budget == null -> Toast.makeText(requireContext(), getString(R.string.enter_valid_number), Toast.LENGTH_SHORT).show()
                     budget <= 0 -> Toast.makeText(requireContext(), getString(R.string.budget_must_positive), Toast.LENGTH_SHORT).show()

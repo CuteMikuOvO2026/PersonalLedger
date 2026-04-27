@@ -23,19 +23,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val dataStoreManager = DataStoreManager(application)
 
     val amount: LiveData<String> = dataStoreManager.amountFlow.asLiveData().mapToFormattedString()
-    val budget: LiveData<Int> = dataStoreManager.budgetFlow.asLiveData()
+    val budget: LiveData<Double> = dataStoreManager.budgetFlow.asLiveData()
     val historyList: LiveData<List<LedgerItem>> = dataStoreManager.historyListFlow.asLiveData()
 
     val todayIncome: LiveData<String> = historyList.map { list ->
-        String.format(Locale.getDefault(), "%.2f", calculateTodayIncomeFromList(list).toDouble())
+        formatAmount(calculateTodayIncomeFromList(list))
     }
 
     val todayExpense: LiveData<String> = historyList.map { list ->
-        String.format(Locale.getDefault(), "%.2f", calculateTodayExpenseFromList(list).toDouble())
+        formatAmount(calculateTodayExpenseFromList(list))
     }
 
     val expenseThisMonth: LiveData<String> = historyList.map { list ->
-        String.format(Locale.getDefault(), "%.2f", calculateThisMonthExpenseFromList(list).toDouble())
+        formatAmount(calculateThisMonthExpenseFromList(list))
     }
 
     private val budgetProgressSource = MediatorLiveData<Float>().apply {
@@ -69,53 +69,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateDailyStats()
     }
 
-    private fun LiveData<Int>.mapToFormattedString(): LiveData<String> {
+    private fun LiveData<Double>.mapToFormattedString(): LiveData<String> {
         val result = MutableLiveData<String>()
         observeForever {
-            result.value = String.format(Locale.getDefault(), "%.2f", it.toDouble())
+            result.value = formatAmount(it)
         }
         return result
     }
 
-    private fun updateProgressFromSource(list: List<LedgerItem>?, budgetValue: Int?) {
+    private fun formatAmount(amount: Double): String {
+        return String.format(Locale.getDefault(), "%.2f", amount)
+    }
+
+    private fun updateProgressFromSource(list: List<LedgerItem>?, budgetValue: Double?) {
         val actualList = list ?: emptyList()
-        val actualBudget = budgetValue ?: 0
+        val actualBudget = budgetValue ?: 0.0
         val expenseValue = calculateThisMonthExpenseFromList(actualList)
         val progressValue = if (actualBudget > 0) {
-            (expenseValue.toFloat() / actualBudget.toFloat() * 100).coerceAtMost(100f)
+            ((expenseValue / actualBudget) * 100).coerceAtMost(100.0).toFloat()
         } else {
             0f
         }
-        (budgetProgressSource as MutableLiveData<Float>).value = progressValue
+        budgetProgressSource.value = progressValue
     }
 
-    private fun parseAmount(amountStr: String): Int {
-        return amountStr.toDoubleOrNull()?.toInt() ?: 0
+    private fun parseAmount(amountStr: String): Double {
+        return amountStr.toDoubleOrNull() ?: 0.0
     }
 
-    fun calculateTotalIncome(): Int {
-        var totalIncome = 0
+    fun calculateTotalIncome(): Double {
+        var totalIncome = 0.0
         historyList.value?.forEach { item ->
             if (!item.isExpense) totalIncome += parseAmount(item.amount)
         }
         return totalIncome
     }
 
-    fun calculateTotalExpense(): Int {
-        var totalExpense = 0
+    fun calculateTotalExpense(): Double {
+        var totalExpense = 0.0
         historyList.value?.forEach { item ->
             if (item.isExpense) totalExpense += parseAmount(item.amount)
         }
         return totalExpense
     }
 
-    fun calculateProgress(totalExpense: Int): Int {
-        val currentBudget = budget.value ?: 5000
+    fun calculateProgress(totalExpense: Double): Int {
+        val currentBudget = budget.value ?: 5000.0
         if (currentBudget <= 0) return 0
-        return ((totalExpense.toFloat() / currentBudget.toFloat()) * 100).toInt().coerceAtMost(100)
+        return ((totalExpense / currentBudget) * 100).toInt().coerceAtMost(100)
     }
 
-    fun saveBudget(newBudget: Int) {
+    fun saveBudget(newBudget: Double) {
         viewModelScope.launch {
             dataStoreManager.saveBudget(newBudget)
         }
@@ -169,20 +173,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val expenseThisMonthValue = calculateThisMonthExpenseFromList(currentList)
         val currentBudget = dataStoreManager.budgetFlow.first()
         val progressValue = if (currentBudget > 0) {
-            (expenseThisMonthValue.toFloat() / currentBudget.toFloat() * 100).coerceAtMost(100f)
+            ((expenseThisMonthValue / currentBudget) * 100).coerceAtMost(100.0).toFloat()
         } else {
             0f
         }
 
-        (todayIncome as MutableLiveData).postValue(
-            String.format(Locale.getDefault(), "%.2f", todayIncomeValue.toDouble())
-        )
-        (todayExpense as MutableLiveData).postValue(
-            String.format(Locale.getDefault(), "%.2f", todayExpenseValue.toDouble())
-        )
-        (expenseThisMonth as MutableLiveData).postValue(
-            String.format(Locale.getDefault(), "%.2f", expenseThisMonthValue.toDouble())
-        )
+        (todayIncome as MutableLiveData).postValue(formatAmount(todayIncomeValue))
+        (todayExpense as MutableLiveData).postValue(formatAmount(todayExpenseValue))
+        (expenseThisMonth as MutableLiveData).postValue(formatAmount(expenseThisMonthValue))
         (budgetProgress as MutableLiveData).postValue(progressValue)
     }
 
@@ -192,10 +190,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun calculateTodayIncomeFromList(list: List<LedgerItem>): Int {
+    private fun calculateTodayIncomeFromList(list: List<LedgerItem>): Double {
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             .format(Calendar.getInstance().time)
-        var total = 0
+        var total = 0.0
         list.forEach { item ->
             if (!item.isExpense && item.time.startsWith(todayStr)) {
                 total += parseAmount(item.amount)
@@ -204,10 +202,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return total
     }
 
-    private fun calculateTodayExpenseFromList(list: List<LedgerItem>): Int {
+    private fun calculateTodayExpenseFromList(list: List<LedgerItem>): Double {
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             .format(Calendar.getInstance().time)
-        var total = 0
+        var total = 0.0
         list.forEach { item ->
             if (item.isExpense && item.time.startsWith(todayStr)) {
                 total += parseAmount(item.amount)
@@ -216,10 +214,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return total
     }
 
-    private fun calculateThisMonthExpenseFromList(list: List<LedgerItem>): Int {
+    private fun calculateThisMonthExpenseFromList(list: List<LedgerItem>): Double {
         val monthStr = SimpleDateFormat("yyyy-MM", Locale.getDefault())
             .format(Calendar.getInstance().time)
-        var total = 0
+        var total = 0.0
         list.forEach { item ->
             if (item.isExpense && item.time.startsWith(monthStr)) {
                 total += parseAmount(item.amount)
@@ -272,7 +270,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }.filterKeys { it.isNotEmpty() }
 
         dateRange.forEachIndexed { index, dateStr ->
-            val dayTotal = groupedExpenses[dateStr]?.sumOf { parseAmount(it.amount) } ?: 0
+            val dayTotal = groupedExpenses[dateStr]?.sumOf { parseAmount(it.amount) } ?: 0.0
             entries.add(BarEntry(index.toFloat(), dayTotal.toFloat()))
 
             try {
@@ -295,7 +293,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         } ?: emptyList()
 
-        var balance = 0
+        var balance = 0.0
         val entries = mutableListOf<Entry>()
 
         sortedList.forEachIndexed { index, item ->

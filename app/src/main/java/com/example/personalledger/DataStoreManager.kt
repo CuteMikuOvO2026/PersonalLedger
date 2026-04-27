@@ -3,6 +3,7 @@ package com.example.personalledger
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -12,7 +13,6 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-// 使用 Context.dataStore 属性委托来创建 DataStore 实例
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class DataStoreManager(private val context: Context) {
@@ -20,25 +20,21 @@ class DataStoreManager(private val context: Context) {
     private val gson = Gson()
 
     companion object {
-        // 定义存储金额的 Key
-        val AMOUNT_KEY = intPreferencesKey("ledger_amount")
-        // 定义存储历史记录列表的 Key
+        val AMOUNT_KEY = doublePreferencesKey("ledger_amount_decimal")
+        val LEGACY_AMOUNT_KEY = intPreferencesKey("ledger_amount")
         val HISTORY_LIST_KEY = stringPreferencesKey("ledger_history_list")
-        // 定义存储月度预算的 Key
-        val BUDGET_KEY = intPreferencesKey("ledger_budget")
+        val BUDGET_KEY = doublePreferencesKey("ledger_budget_decimal")
+        val LEGACY_BUDGET_KEY = intPreferencesKey("ledger_budget")
     }
 
-    // 从 DataStore 读取金额流
-    val amountFlow: Flow<Int> = context.dataStore.data.map { preferences ->
-        preferences[AMOUNT_KEY] ?: 0
+    val amountFlow: Flow<Double> = context.dataStore.data.map { preferences ->
+        preferences[AMOUNT_KEY] ?: preferences[LEGACY_AMOUNT_KEY]?.toDouble() ?: 0.0
     }
 
-    // 从 DataStore 读取预算流，默认 5000
-    val budgetFlow: Flow<Int> = context.dataStore.data.map { preferences ->
-        preferences[BUDGET_KEY] ?: 5000
+    val budgetFlow: Flow<Double> = context.dataStore.data.map { preferences ->
+        preferences[BUDGET_KEY] ?: preferences[LEGACY_BUDGET_KEY]?.toDouble() ?: 5000.0
     }
 
-    // 从 DataStore 读取历史记录列表流
     val historyListFlow: Flow<List<LedgerItem>> = context.dataStore.data.map { preferences ->
         val jsonString = preferences[HISTORY_LIST_KEY]
         if (jsonString.isNullOrEmpty()) {
@@ -47,27 +43,26 @@ class DataStoreManager(private val context: Context) {
             try {
                 val type = object : TypeToken<List<LedgerItem>>() {}.type
                 gson.fromJson<List<LedgerItem>>(jsonString, type) ?: emptyList()
-            } catch (e: Exception) {
-                emptyList() // 解析失败时返回空列表防崩溃
+            } catch (_: Exception) {
+                emptyList()
             }
         }
     }
 
-    // 异步保存金额到 DataStore
-    suspend fun saveAmount(amount: Int) {
+    suspend fun saveAmount(amount: Double) {
         context.dataStore.edit { preferences ->
             preferences[AMOUNT_KEY] = amount
+            preferences.remove(LEGACY_AMOUNT_KEY)
         }
     }
 
-    // 异步保存预算到 DataStore
-    suspend fun saveBudget(budget: Int) {
+    suspend fun saveBudget(budget: Double) {
         context.dataStore.edit { preferences ->
             preferences[BUDGET_KEY] = budget
+            preferences.remove(LEGACY_BUDGET_KEY)
         }
     }
 
-    // 异步保存历史记录列表到 DataStore
     suspend fun saveHistoryList(list: List<LedgerItem>) {
         val jsonString = gson.toJson(list)
         context.dataStore.edit { preferences ->
@@ -75,7 +70,6 @@ class DataStoreManager(private val context: Context) {
         }
     }
 
-    // 清空所有数据
     suspend fun clearAllData() {
         context.dataStore.edit { preferences ->
             preferences.clear()
