@@ -13,11 +13,11 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.core.view.MenuProvider
 import androidx.core.view.setPadding
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
-import androidx.core.view.MenuProvider
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.personalledger.databinding.FragmentHomeBinding
@@ -28,17 +28,18 @@ import kotlin.math.abs
 
 class HomeFragment : Fragment() {
 
-    private enum class LedgerFilterType {
-        ALL,
-        EXPENSE,
-        INCOME
+    private sealed class LedgerFilter {
+        data object All : LedgerFilter()
+        data object Expense : LedgerFilter()
+        data object Income : LedgerFilter()
+        data class Category(val name: String) : LedgerFilter()
     }
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
 
     private val viewModel: MainViewModel by activityViewModels()
-    private var currentFilterType = LedgerFilterType.ALL
+    private var currentFilter: LedgerFilter = LedgerFilter.All
 
     private val ledgerAdapter = LedgerAdapter { item, _ ->
         showDeleteConfirmDialog(item)
@@ -124,28 +125,26 @@ class HomeFragment : Fragment() {
     }
 
     private fun filterLedgerList(list: List<LedgerItem>): List<LedgerItem> {
-        return when (currentFilterType) {
-            LedgerFilterType.ALL -> list
-            LedgerFilterType.EXPENSE -> list.filter { it.isExpense }
-            LedgerFilterType.INCOME -> list.filter { !it.isExpense }
+        return when (val filter = currentFilter) {
+            LedgerFilter.All -> list
+            LedgerFilter.Expense -> list.filter { it.isExpense }
+            LedgerFilter.Income -> list.filter { !it.isExpense }
+            is LedgerFilter.Category -> list.filter { it.categoryName == filter.name }
         }
     }
 
     private fun showFilterDialog() {
-        val filterOptions = arrayOf("全部", "支出", "收入")
-        val checkedItem = when (currentFilterType) {
-            LedgerFilterType.ALL -> 0
-            LedgerFilterType.EXPENSE -> 1
-            LedgerFilterType.INCOME -> 2
-        }
+        val filterOptions = buildFilterOptions()
+        val checkedItem = getCheckedFilterIndex(filterOptions)
 
         AlertDialog.Builder(requireContext())
             .setTitle("筛选类型")
-            .setSingleChoiceItems(filterOptions, checkedItem) { dialog, which ->
-                currentFilterType = when (which) {
-                    1 -> LedgerFilterType.EXPENSE
-                    2 -> LedgerFilterType.INCOME
-                    else -> LedgerFilterType.ALL
+            .setSingleChoiceItems(filterOptions.toTypedArray(), checkedItem) { dialog, which ->
+                currentFilter = when (which) {
+                    1 -> LedgerFilter.Expense
+                    2 -> LedgerFilter.Income
+                    in 3 until filterOptions.size -> LedgerFilter.Category(filterOptions[which])
+                    else -> LedgerFilter.All
                 }
                 viewModel.historyList.value?.let { ledgerAdapter.submitList(filterLedgerList(it)) }
                 updateEmptyState()
@@ -153,6 +152,27 @@ class HomeFragment : Fragment() {
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private fun buildFilterOptions(): List<String> {
+        return mutableListOf("全部", "支出", "收入").apply {
+            addAll(
+                viewModel.historyList.value
+                    .orEmpty()
+                    .map { it.categoryName }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+            )
+        }
+    }
+
+    private fun getCheckedFilterIndex(filterOptions: List<String>): Int {
+        return when (val filter = currentFilter) {
+            LedgerFilter.All -> 0
+            LedgerFilter.Expense -> 1
+            LedgerFilter.Income -> 2
+            is LedgerFilter.Category -> filterOptions.indexOf(filter.name).takeIf { it >= 0 } ?: 0
+        }
     }
 
     private fun updateEmptyState() {
