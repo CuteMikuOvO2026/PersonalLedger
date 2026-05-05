@@ -49,6 +49,10 @@
     <string name="choose_category">选择分类</string>
     <string name="note_optional">备注（可选）</string>
     <string name="save">保存</string>
+    <string name="edit">编辑</string>
+    <string name="delete">删除</string>
+    <string name="edit_entry_title">编辑账单</string>
+    <string name="entry_updated">账单已更新</string>
     <string name="enter_amount">请输入金额</string>
     <string name="invalid_amount">金额格式不正确</string>
     <string name="amount_must_positive">金额必须大于 0</string>
