@@ -28,10 +28,17 @@ import kotlin.math.abs
 
 class HomeFragment : Fragment() {
 
+    private enum class LedgerFilterType {
+        ALL,
+        EXPENSE,
+        INCOME
+    }
+
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
 
     private val viewModel: MainViewModel by activityViewModels()
+    private var currentFilterType = LedgerFilterType.ALL
 
     private val ledgerAdapter = LedgerAdapter { item, _ ->
         showDeleteConfirmDialog(item)
@@ -49,6 +56,7 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setupRecyclerView()
+        setupFilterClick()
         setupObservers()
         setupFab()
         setupBudgetClick()
@@ -65,9 +73,10 @@ class HomeFragment : Fragment() {
 
     private fun setupObservers() {
         viewModel.historyList.observe(viewLifecycleOwner) { list ->
-            ledgerAdapter.submitList(list)
-            binding.layoutEmpty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
-            binding.recyclerView.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
+            val filteredList = filterLedgerList(list)
+            ledgerAdapter.submitList(filteredList)
+            binding.layoutEmpty.visibility = if (filteredList.isEmpty()) View.VISIBLE else View.GONE
+            binding.recyclerView.visibility = if (filteredList.isEmpty()) View.GONE else View.VISIBLE
             updateBoardStats(list)
         }
 
@@ -106,6 +115,51 @@ class HomeFragment : Fragment() {
                 expense
             )
         }
+    }
+
+    private fun setupFilterClick() {
+        binding.textViewAll.setOnClickListener {
+            showFilterDialog()
+        }
+    }
+
+    private fun filterLedgerList(list: List<LedgerItem>): List<LedgerItem> {
+        return when (currentFilterType) {
+            LedgerFilterType.ALL -> list
+            LedgerFilterType.EXPENSE -> list.filter { it.isExpense }
+            LedgerFilterType.INCOME -> list.filter { !it.isExpense }
+        }
+    }
+
+    private fun showFilterDialog() {
+        val filterOptions = arrayOf("全部", "支出", "收入")
+        val checkedItem = when (currentFilterType) {
+            LedgerFilterType.ALL -> 0
+            LedgerFilterType.EXPENSE -> 1
+            LedgerFilterType.INCOME -> 2
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("筛选类型")
+            .setSingleChoiceItems(filterOptions, checkedItem) { dialog, which ->
+                currentFilterType = when (which) {
+                    1 -> LedgerFilterType.EXPENSE
+                    2 -> LedgerFilterType.INCOME
+                    else -> LedgerFilterType.ALL
+                }
+                viewModel.historyList.value?.let { ledgerAdapter.submitList(filterLedgerList(it)) }
+                updateEmptyState()
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun updateEmptyState() {
+        val currentList = viewModel.historyList.value.orEmpty()
+        val filteredList = filterLedgerList(currentList)
+        binding.layoutEmpty.visibility = if (filteredList.isEmpty()) View.VISIBLE else View.GONE
+        binding.recyclerView.visibility = if (filteredList.isEmpty()) View.GONE else View.VISIBLE
     }
 
     private fun updateBoardStats(list: List<LedgerItem>) {
