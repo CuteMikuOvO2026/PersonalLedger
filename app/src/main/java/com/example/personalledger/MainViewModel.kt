@@ -166,6 +166,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateLedgerEntry(oldItem: LedgerItem, newItem: LedgerItem) {
+        viewModelScope.launch {
+            val currentList = dataStoreManager.historyListFlow.first().toMutableList()
+            val index = currentList.indexOf(oldItem)
+            if (index == -1) return@launch
+
+            currentList[index] = newItem
+
+            val currentTotal = dataStoreManager.amountFlow.first()
+            val revertedTotal = if (oldItem.isExpense) {
+                currentTotal - parseAmount(oldItem.amount)
+            } else {
+                currentTotal + parseAmount(oldItem.amount)
+            }
+            val updatedTotal = if (newItem.isExpense) {
+                revertedTotal + parseAmount(newItem.amount)
+            } else {
+                revertedTotal - parseAmount(newItem.amount)
+            }
+
+            dataStoreManager.saveAmount(updatedTotal)
+            dataStoreManager.saveHistoryList(currentList)
+            updateDailyStatsInternal()
+        }
+    }
+
     private suspend fun updateDailyStatsInternal() {
         val currentList = dataStoreManager.historyListFlow.first()
         val todayIncomeValue = calculateTodayIncomeFromList(currentList)

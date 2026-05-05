@@ -19,7 +19,9 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.DefaultItemAnimator
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.example.personalledger.databinding.FragmentHomeBinding
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -41,9 +43,17 @@ class HomeFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
     private var currentFilter: LedgerFilter = LedgerFilter.All
 
-    private val ledgerAdapter = LedgerAdapter { item, _ ->
-        showDeleteConfirmDialog(item)
-    }
+    private val ledgerAdapter: LedgerAdapter = LedgerAdapter(
+        onEditClick = { item: LedgerItem ->
+            ledgerAdapter.closeOpenItem()
+            AddEntryBottomSheetDialogFragment.newInstance(item)
+                .show(childFragmentManager, AddEntryBottomSheetDialogFragment.TAG)
+        },
+        onDeleteClick = { item: LedgerItem ->
+            ledgerAdapter.closeOpenItem()
+            showDeleteConfirmDialog(item)
+        }
+    )
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -69,7 +79,76 @@ class HomeFragment : Fragment() {
             layoutManager = LinearLayoutManager(context)
             adapter = ledgerAdapter
             itemAnimator = DefaultItemAnimator()
+            attachSwipeActions(this)
         }
+    }
+
+    private fun attachSwipeActions(recyclerView: RecyclerView) {
+        val callback = object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean = false
+
+            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float = 0.5f
+
+            override fun getSwipeEscapeVelocity(defaultValue: Float): Float = defaultValue * 10
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val position = viewHolder.adapterPosition
+                if (position == RecyclerView.NO_POSITION) return
+
+                if (direction == ItemTouchHelper.LEFT) {
+                    ledgerAdapter.setOpenPosition(position)
+                } else {
+                    ledgerAdapter.closeOpenItem()
+                }
+            }
+
+            override fun onChildDraw(
+                c: android.graphics.Canvas,
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                dX: Float,
+                dY: Float,
+                actionState: Int,
+                isCurrentlyActive: Boolean
+            ) {
+                if (actionState != ItemTouchHelper.ACTION_STATE_SWIPE) {
+                    super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
+                    return
+                }
+
+                val foregroundView = viewHolder.itemView.findViewById<View>(R.id.foreground_card)
+                val actionView = viewHolder.itemView.findViewById<View>(R.id.action_container)
+                val maxSwipeDistance = actionView.width.toFloat()
+                val isOpen = ledgerAdapter.getOpenPosition() == viewHolder.adapterPosition
+                val startX = if (isOpen) -maxSwipeDistance else 0f
+                val targetTranslation = (startX + dX).coerceIn(-maxSwipeDistance, 0f)
+
+                foregroundView.translationX = targetTranslation
+            }
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, viewHolder)
+                val foregroundView = viewHolder.itemView.findViewById<View>(R.id.foreground_card)
+                val actionView = viewHolder.itemView.findViewById<View>(R.id.action_container)
+                val maxSwipeDistance = actionView.width.toFloat()
+                val shouldStayOpen = abs(foregroundView.translationX) >= maxSwipeDistance / 2f
+                val position = viewHolder.adapterPosition
+
+                if (shouldStayOpen && position != RecyclerView.NO_POSITION) {
+                    ledgerAdapter.setOpenPosition(position)
+                    foregroundView.translationX = -maxSwipeDistance
+                } else {
+                    ledgerAdapter.closeOpenItem()
+                    foregroundView.translationX = 0f
+                }
+            }
+        }
+
+        ItemTouchHelper(callback).attachToRecyclerView(recyclerView)
     }
 
     private fun setupObservers() {

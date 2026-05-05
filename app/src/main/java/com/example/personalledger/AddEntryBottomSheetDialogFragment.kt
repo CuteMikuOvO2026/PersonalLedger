@@ -27,6 +27,7 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
     private val categoryAdapter = CategoryAdapter { }
 
     private var isExpense = true
+    private var editingItem: LedgerItem? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -39,10 +40,24 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        editingItem = arguments?.let { bundle ->
+            if (!bundle.containsKey(ARG_EDIT_TIME)) {
+                null
+            } else {
+                LedgerItem(
+                    amount = bundle.getString(ARG_EDIT_AMOUNT).orEmpty(),
+                    note = bundle.getString(ARG_EDIT_NOTE).orEmpty(),
+                    time = bundle.getString(ARG_EDIT_TIME).orEmpty(),
+                    isExpense = bundle.getBoolean(ARG_EDIT_IS_EXPENSE, true),
+                    categoryName = bundle.getString(ARG_EDIT_CATEGORY_NAME).orEmpty(),
+                    categoryIconRes = bundle.getInt(ARG_EDIT_CATEGORY_ICON, android.R.drawable.ic_menu_agenda)
+                )
+            }
+        }
         setupTabs()
         setupCategoryList()
         setupActions()
-        resetForm()
+        bindInitialState()
         applyInsets()
     }
 
@@ -82,17 +97,31 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
         binding.buttonSave.setOnClickListener { saveEntry() }
     }
 
-    private fun resetForm() {
-        binding.editAmount.setText("")
-        binding.editNote.setText("")
-        binding.tabType.selectTab(binding.tabType.getTabAt(0))
-        isExpense = true
-        updateCategories()
+    private fun bindInitialState() {
+        val item = editingItem
+        if (item == null) {
+            binding.editAmount.setText("")
+            binding.editNote.setText("")
+            binding.tabType.selectTab(binding.tabType.getTabAt(0))
+            isExpense = true
+            updateCategories()
+            return
+        }
+
+        binding.editAmount.setText(item.amount)
+        binding.editNote.setText(item.note)
+        binding.tabType.selectTab(binding.tabType.getTabAt(if (item.isExpense) 0 else 1))
+        isExpense = item.isExpense
+        updateCategories(item.categoryName)
+        binding.buttonSave.text = getString(R.string.edit)
     }
 
-    private fun updateCategories() {
+    private fun updateCategories(selectedCategoryName: String? = null) {
         val categories = if (isExpense) viewModel.expenseCategories else viewModel.incomeCategories
-        categoryAdapter.submitList(categories)
+        val selectedIndex = selectedCategoryName?.let { name ->
+            categories.indexOfFirst { it.name == name }.takeIf { it != -1 }
+        } ?: 0
+        categoryAdapter.submitList(categories, selectedIndex)
     }
 
     private fun saveEntry() {
@@ -132,8 +161,14 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
             note = note
         )
 
-        viewModel.addLedgerEntry(item)
-        Toast.makeText(context, getString(R.string.save_success), Toast.LENGTH_SHORT).show()
+        val sourceItem = editingItem
+        if (sourceItem == null) {
+            viewModel.addLedgerEntry(item)
+            Toast.makeText(context, getString(R.string.save_success), Toast.LENGTH_SHORT).show()
+        } else {
+            viewModel.updateLedgerEntry(sourceItem, item)
+            Toast.makeText(context, getString(R.string.entry_updated), Toast.LENGTH_SHORT).show()
+        }
         dismiss()
     }
 
@@ -152,5 +187,24 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
 
     companion object {
         const val TAG = "AddEntryBottomSheet"
+        private const val ARG_EDIT_AMOUNT = "arg_edit_amount"
+        private const val ARG_EDIT_NOTE = "arg_edit_note"
+        private const val ARG_EDIT_TIME = "arg_edit_time"
+        private const val ARG_EDIT_IS_EXPENSE = "arg_edit_is_expense"
+        private const val ARG_EDIT_CATEGORY_NAME = "arg_edit_category_name"
+        private const val ARG_EDIT_CATEGORY_ICON = "arg_edit_category_icon"
+
+        fun newInstance(item: LedgerItem): AddEntryBottomSheetDialogFragment {
+            return AddEntryBottomSheetDialogFragment().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_EDIT_AMOUNT, item.amount)
+                    putString(ARG_EDIT_NOTE, item.note)
+                    putString(ARG_EDIT_TIME, item.time)
+                    putBoolean(ARG_EDIT_IS_EXPENSE, item.isExpense)
+                    putString(ARG_EDIT_CATEGORY_NAME, item.categoryName)
+                    putInt(ARG_EDIT_CATEGORY_ICON, item.categoryIconRes)
+                }
+            }
+        }
     }
 }
