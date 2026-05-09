@@ -1,20 +1,26 @@
-package com.example.personalledger
+﻿package com.example.personalledger
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
 import com.example.personalledger.databinding.ActivityMainBinding
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private val viewModel: MainViewModel by viewModels()
     private lateinit var binding: ActivityMainBinding
+    private lateinit var dataStoreManager: DataStoreManager
 
     var reportFragment: ReportFragment? = null
 
@@ -34,6 +40,7 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        dataStoreManager = DataStoreManager(this)
 
         setSupportActionBar(binding.toolbar)
         binding.toolbar.setTitleTextColor(ContextCompat.getColor(this, R.color.text_primary))
@@ -75,5 +82,22 @@ class MainActivity : AppCompatActivity() {
                 else -> false
             }
         }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menu?.add(0, 1001, 0, "退出登录")
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == 1001) {
+            lifecycleScope.launch {
+                dataStoreManager.logoutUser()
+                startActivity(Intent(this@MainActivity, AuthActivity::class.java))
+                finish()
+            }
+            return true
+        }
+        return super.onOptionsItemSelected(item)
     }
 }
