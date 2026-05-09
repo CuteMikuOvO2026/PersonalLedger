@@ -1,8 +1,9 @@
-package com.example.personalledger
+﻿package com.example.personalledger
 
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -11,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -25,6 +27,10 @@ class DataStoreManager(private val context: Context) {
         val HISTORY_LIST_KEY = stringPreferencesKey("ledger_history_list")
         val BUDGET_KEY = doublePreferencesKey("ledger_budget_decimal")
         val LEGACY_BUDGET_KEY = intPreferencesKey("ledger_budget")
+
+        val USERNAME_KEY = stringPreferencesKey("auth_username")
+        val PASSWORD_KEY = stringPreferencesKey("auth_password")
+        val IS_LOGGED_IN_KEY = booleanPreferencesKey("auth_is_logged_in")
     }
 
     val amountFlow: Flow<Double> = context.dataStore.data.map { preferences ->
@@ -47,6 +53,44 @@ class DataStoreManager(private val context: Context) {
                 emptyList()
             }
         }
+    }
+
+    val isLoggedInFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[IS_LOGGED_IN_KEY] ?: false
+    }
+
+    suspend fun isLoggedIn(): Boolean = isLoggedInFlow.first()
+
+    suspend fun registerUser(username: String, password: String) {
+        context.dataStore.edit { preferences ->
+            preferences[USERNAME_KEY] = username
+            preferences[PASSWORD_KEY] = password
+            preferences[IS_LOGGED_IN_KEY] = true
+        }
+    }
+
+    suspend fun loginUser(username: String, password: String): Boolean {
+        val prefs = context.dataStore.data.first()
+        val savedUsername = prefs[USERNAME_KEY]
+        val savedPassword = prefs[PASSWORD_KEY]
+        val success = savedUsername == username && savedPassword == password
+        if (success) {
+            context.dataStore.edit { preferences ->
+                preferences[IS_LOGGED_IN_KEY] = true
+            }
+        }
+        return success
+    }
+
+    suspend fun logoutUser() {
+        context.dataStore.edit { preferences ->
+            preferences[IS_LOGGED_IN_KEY] = false
+        }
+    }
+
+    suspend fun hasRegisteredUser(): Boolean {
+        val prefs = context.dataStore.data.first()
+        return !prefs[USERNAME_KEY].isNullOrBlank() && !prefs[PASSWORD_KEY].isNullOrBlank()
     }
 
     suspend fun saveAmount(amount: Double) {
