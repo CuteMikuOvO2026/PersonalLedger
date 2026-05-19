@@ -30,6 +30,7 @@ import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.github.mikephil.charting.formatter.ValueFormatter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -43,6 +44,12 @@ class ReportFragment : Fragment() {
     private val chartTypeface: Typeface? by lazy {
         ResourcesCompat.getFont(requireContext(), R.font.app_ui_font)
             ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
+    }
+
+    private val decimalFormatter = object : ValueFormatter() {
+        override fun getFormattedValue(value: Float): String {
+            return String.format(Locale.getDefault(), "%.2f", value)
+        }
     }
 
     private val chartColors by lazy {
@@ -293,6 +300,7 @@ class ReportFragment : Fragment() {
             valueTextSize = 11f
             valueTextColor = ContextCompat.getColor(requireContext(), R.color.text_primary)
             valueTypeface = chartTypeface
+            valueFormatter = decimalFormatter
         }
 
         binding.pieChartExpense.data = PieData(dataSet).apply {
@@ -314,6 +322,7 @@ class ReportFragment : Fragment() {
             valueTextColor = ContextCompat.getColor(requireContext(), R.color.text_primary)
             valueTextSize = 10f
             valueTypeface = chartTypeface
+            valueFormatter = decimalFormatter
         }
 
         binding.barChartWeekly.data = BarData(dataSet).apply {

@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
 import androidx.core.view.MenuProvider
 import androidx.core.view.setPadding
@@ -42,6 +43,7 @@ class HomeFragment : Fragment() {
 
     private val viewModel: MainViewModel by activityViewModels()
     private var currentFilter: LedgerFilter = LedgerFilter.All
+    private var searchQuery: String = ""
 
     private val ledgerAdapter: LedgerAdapter = LedgerAdapter(
         onEditClick = { item: LedgerItem ->
@@ -204,12 +206,14 @@ class HomeFragment : Fragment() {
     }
 
     private fun filterLedgerList(list: List<LedgerItem>): List<LedgerItem> {
-        return when (val filter = currentFilter) {
+        val typeFiltered = when (val filter = currentFilter) {
             LedgerFilter.All -> list
             LedgerFilter.Expense -> list.filter { it.isExpense }
             LedgerFilter.Income -> list.filter { !it.isExpense }
             is LedgerFilter.Category -> list.filter { it.categoryName == filter.name }
         }
+        if (searchQuery.isBlank()) return typeFiltered
+        return typeFiltered.filter { it.note.contains(searchQuery, ignoreCase = true) }
     }
 
     private fun showFilterDialog() {
@@ -225,8 +229,7 @@ class HomeFragment : Fragment() {
                     in 3 until filterOptions.size -> LedgerFilter.Category(filterOptions[which])
                     else -> LedgerFilter.All
                 }
-                viewModel.historyList.value?.let { ledgerAdapter.submitList(filterLedgerList(it)) }
-                updateEmptyState()
+                applyCurrentFilters()
                 dialog.dismiss()
             }
             .setNegativeButton(android.R.string.cancel, null)
@@ -251,6 +254,13 @@ class HomeFragment : Fragment() {
             LedgerFilter.Expense -> 1
             LedgerFilter.Income -> 2
             is LedgerFilter.Category -> filterOptions.indexOf(filter.name).takeIf { it >= 0 } ?: 0
+        }
+    }
+
+    private fun applyCurrentFilters() {
+        viewModel.historyList.value?.let { list ->
+            ledgerAdapter.submitList(filterLedgerList(list))
+            updateEmptyState()
         }
     }
 
@@ -354,7 +364,25 @@ class HomeFragment : Fragment() {
 
     private fun setupMenuProvider() {
         val menuProvider = object : MenuProvider {
-            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) = Unit
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+                menuInflater.inflate(R.menu.home_menu, menu)
+                val searchItem = menu.findItem(R.id.action_search)
+                val searchView = searchItem.actionView as SearchView
+                searchView.queryHint = getString(R.string.search_hint)
+                searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+                    override fun onQueryTextSubmit(query: String?): Boolean {
+                        searchQuery = query.orEmpty()
+                        applyCurrentFilters()
+                        return true
+                    }
+
+                    override fun onQueryTextChange(newText: String?): Boolean {
+                        searchQuery = newText.orEmpty()
+                        applyCurrentFilters()
+                        return true
+                    }
+                })
+            }
 
             override fun onMenuItemSelected(menuItem: MenuItem): Boolean = false
         }
