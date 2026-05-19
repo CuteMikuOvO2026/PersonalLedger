@@ -48,6 +48,8 @@
     <string name="type_income">收入</string>
     <string name="choose_category">选择分类</string>
     <string name="note_optional">备注（可选）</string>
+    <string name="search">搜索</string>
+    <string name="search_hint">输入备注关键词搜索</string>
     <string name="save">保存</string>
     <string name="edit">编辑</string>
     <string name="delete">删除</string>
