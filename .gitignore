@@ -14,3 +14,10 @@
 .cxx
 local.properties
 /.idea
+/.kotlin
+/app/release
+/output
+/qa_docx_render
+/qa_table_design
+/scratch
+/tmp_*
