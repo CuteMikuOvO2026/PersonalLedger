@@ -4,4 +4,4 @@
 
 ## 点击链接下载最新安装包
 
-<https://github.com/CuteMikuOvO2026/PersonalLedger/releases/download/1.3/app-1.3.apk>
+https://github.com/CuteMikuOvO2026/PersonalLedger/releases/download/1.4/app-1.4.apk
