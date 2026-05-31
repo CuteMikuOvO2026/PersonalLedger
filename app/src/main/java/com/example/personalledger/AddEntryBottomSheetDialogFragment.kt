@@ -153,7 +153,7 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
         }
 
         val item = LedgerItem(
-            time = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()),
+            time = editingItem?.time ?: SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()),
             amount = String.format(Locale.getDefault(), "%.2f", amount),
             isExpense = isExpense,
             categoryName = selectedCategory.name,

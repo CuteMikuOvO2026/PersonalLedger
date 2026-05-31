@@ -1,6 +1,7 @@
-﻿package com.example.personalledger
+package com.example.personalledger
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -117,6 +118,56 @@ class DataStoreManager(private val context: Context) {
     suspend fun clearAllData() {
         context.dataStore.edit { preferences ->
             preferences.clear()
+        }
+    }
+
+    data class BackupData(
+        val version: Int = 1,
+        val items: List<LedgerItem>,
+        val amount: Double,
+        val budget: Double
+    )
+
+    suspend fun getBackupJson(): String {
+        val prefs = context.dataStore.data.first()
+        val jsonString = prefs[HISTORY_LIST_KEY].orEmpty()
+        val items: List<LedgerItem> = if (jsonString.isNotEmpty()) {
+            try {
+                val type = object : TypeToken<List<LedgerItem>>() {}.type
+                gson.fromJson(jsonString, type) ?: emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
+        val amountValue = prefs[AMOUNT_KEY] ?: prefs[LEGACY_AMOUNT_KEY]?.toDouble() ?: 0.0
+        val budgetValue = prefs[BUDGET_KEY] ?: prefs[LEGACY_BUDGET_KEY]?.toDouble() ?: 5000.0
+
+        val backup = BackupData(
+            items = items,
+            amount = amountValue,
+            budget = budgetValue
+        )
+        return gson.toJson(backup)
+    }
+
+    suspend fun restoreFromBackup(json: String): Boolean {
+        return try {
+            val backup = gson.fromJson(json, BackupData::class.java)
+                ?: return false
+
+            context.dataStore.edit { preferences ->
+                preferences[HISTORY_LIST_KEY] = gson.toJson(backup.items)
+                preferences[AMOUNT_KEY] = backup.amount
+                preferences[BUDGET_KEY] = backup.budget
+                preferences.remove(LEGACY_AMOUNT_KEY)
+                preferences.remove(LEGACY_BUDGET_KEY)
+            }
+            true
+        } catch (e: Exception) {
+            Log.e("DataStoreManager", "导入备份失败", e)
+            false
         }
     }
 }

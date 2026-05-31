@@ -18,23 +18,10 @@
         android:paddingBottom="8dp">
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/button_edit"
-            style="@style/Widget.Material3.Button"
-            android:layout_width="72dp"
-            android:layout_height="96dp"
-            android:backgroundTint="@color/md_theme_secondary"
-            android:text="@string/edit"
-            android:textColor="@color/white"
-            android:textSize="14sp"
-            app:cornerRadius="18dp"
-            app:elevation="0dp" />
-
-        <com.google.android.material.button.MaterialButton
             android:id="@+id/button_delete"
             style="@style/Widget.Material3.Button"
             android:layout_width="72dp"
             android:layout_height="96dp"
-            android:layout_marginStart="8dp"
             android:backgroundTint="@color/md_theme_error"
             android:text="@string/delete"
             android:textColor="@color/white"

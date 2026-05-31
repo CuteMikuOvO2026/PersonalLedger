@@ -5,9 +5,8 @@
     <option name="linkedExternalProjectsSettings">
       <GradleProjectSettings>
         <option name="testRunner" value="CHOOSE_PER_TEST" />
-        <option name="distributionType" value="LOCAL" />
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
-        <option name="gradleHome" value="D:\gradle\gradle-9.5.0-rc-2" />
+        <option name="gradleHome" value="D:\gradle\gradle-9.5.1" />
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />

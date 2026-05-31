@@ -84,8 +84,13 @@ class LedgerAdapter(
             binding.sign.setTextColor(accentColor)
             binding.amount.setTextColor(accentColor)
 
-            binding.buttonEdit.setOnClickListener { onEditClick(item) }
             binding.buttonDelete.setOnClickListener { onDeleteClick(item) }
+            binding.foregroundCard.setOnClickListener {
+                if (isOpen) {
+                    return@setOnClickListener
+                }
+                onEditClick(item)
+            }
             binding.foregroundCard.post {
                 binding.foregroundCard.translationX = if (isOpen) {
                     -binding.actionContainer.width.toFloat()

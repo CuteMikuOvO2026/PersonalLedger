@@ -1,6 +1,5 @@
 package com.example.personalledger
 
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
@@ -66,9 +65,15 @@ class ReportFragment : Fragment() {
     }
 
     private val createDocumentLauncher = registerForActivityResult(
-        ActivityResultContracts.CreateDocument("text/csv")
+        ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
-        uri?.let { exportToCsv(it) }
+        uri?.let { exportBackupTo(it) }
+    }
+
+    private val openDocumentLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { importBackupFrom(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -113,52 +118,56 @@ class ReportFragment : Fragment() {
     }
 
     fun exportData() {
-        val fileName = "PersonalLedger_${
+        val fileName = "轻帐备份_${
             SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        }.csv"
+        }.json"
         createDocumentLauncher.launch(fileName)
     }
 
-    private fun exportToCsv(uri: Uri) {
-        try {
-            requireContext().contentResolver.openOutputStream(uri)?.use { stream ->
-                val writer = stream.bufferedWriter()
-                writer.write(getString(R.string.csv_header))
-                viewModel.historyList.value?.forEach { item ->
-                    val type = if (item.isExpense) {
-                        getString(R.string.type_expense_text)
-                    } else {
-                        getString(R.string.type_income_text)
-                    }
-                    val amount = if (item.isExpense) "-${item.amount}" else "+${item.amount}"
-                    writer.write("${item.time},$type,${item.categoryName},$amount,${item.note}\n")
+    private fun exportBackupTo(uri: Uri) {
+        viewModel.getBackupJson { json ->
+            try {
+                requireContext().contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(json.toByteArray(Charsets.UTF_8))
                 }
-                writer.flush()
+                Toast.makeText(requireContext(), getString(R.string.export_success), Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun importData() {
+        openDocumentLauncher.launch(arrayOf("application/json", "*/*"))
+    }
+
+    private fun importBackupFrom(uri: Uri) {
+        try {
+            val json = requireContext().contentResolver.openInputStream(uri)?.use { stream ->
+                stream.bufferedReader(Charsets.UTF_8).readText()
+            }
+            if (json.isNullOrBlank()) {
+                Toast.makeText(requireContext(), getString(R.string.import_empty_file), Toast.LENGTH_SHORT).show()
+                return
             }
 
-            Toast.makeText(requireContext(), getString(R.string.export_success), Toast.LENGTH_SHORT).show()
-            showShareDialog(uri)
+            AlertDialog.Builder(requireContext())
+                .setTitle(R.string.import_confirm_title)
+                .setMessage(R.string.import_confirm_message)
+                .setPositiveButton(R.string.import_confirm) { _, _ ->
+                    viewModel.importBackup(json) { success ->
+                        if (success) {
+                            Toast.makeText(requireContext(), getString(R.string.import_success), Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(requireContext(), getString(R.string.import_failed), Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
         } catch (e: Exception) {
-            Toast.makeText(requireContext(), "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    private fun showShareDialog(uri: Uri) {
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.export_success_title)
-            .setMessage(R.string.export_success_share)
-            .setPositiveButton(R.string.share_now) { _, _ -> shareFile(uri) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun shareFile(uri: Uri) {
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/csv"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        startActivity(Intent.createChooser(shareIntent, getString(R.string.report_share)))
     }
 
     private fun initCharts() {
@@ -373,6 +382,11 @@ class ReportFragment : Fragment() {
                 return when (menuItem.itemId) {
                     R.id.action_export -> {
                         exportData()
+                        true
+                    }
+
+                    R.id.action_import -> {
+                        importData()
                         true
                     }
 

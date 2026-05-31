@@ -258,6 +258,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun getBackupJson(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(dataStoreManager.getBackupJson())
+        }
+    }
+
+    fun importBackup(json: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = dataStoreManager.restoreFromBackup(json)
+            if (success) {
+                updateDailyStatsInternal()
+            }
+            onResult(success)
+        }
+    }
+
     fun getExpenseCategoryPieEntries(): List<PieEntry> {
         val categoryTotals = mutableMapOf<String, Float>()
         historyList.value?.forEach { item ->
