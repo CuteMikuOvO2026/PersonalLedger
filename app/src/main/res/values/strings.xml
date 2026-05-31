@@ -20,7 +20,6 @@
     <string name="report_balance_subtitle">查看整体结余变化轨迹</string>
     <string name="report_export">导出备份</string>
     <string name="report_import">导入备份</string>
-    <string name="report_share">分享账本</string>
     <string name="report_empty_expense">暂无支出数据</string>
     <string name="report_empty_weekly">最近 7 天暂无支出</string>
     <string name="report_empty_balance">暂无资产变化数据</string>
@@ -36,12 +35,6 @@
     <string name="import_success">数据恢复成功</string>
     <string name="import_failed">备份文件格式不正确</string>
     <string name="import_empty_file">文件内容为空</string>
-    <string name="export_success_share">是否立即分享文件？</string>
-    <string name="export_success_title">导出成功</string>
-    <string name="share_now">分享</string>
-    <string name="csv_header">日期,类型,分类,金额,备注\n</string>
-    <string name="type_expense_text">支出</string>
-    <string name="type_income_text">收入</string>
     <string name="line_balance_label">总资产</string>
     <string name="empty_records">暂无记录</string>
     <string name="empty_records_hint">点击右下角按钮开始记账</string>
