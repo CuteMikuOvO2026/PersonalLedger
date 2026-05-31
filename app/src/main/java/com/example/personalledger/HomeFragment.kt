@@ -93,9 +93,9 @@ class HomeFragment : Fragment() {
                 target: RecyclerView.ViewHolder
             ): Boolean = false
 
-            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float = 0.5f
+            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float = 0.2f
 
-            override fun getSwipeEscapeVelocity(defaultValue: Float): Float = defaultValue * 10
+            override fun getSwipeEscapeVelocity(defaultValue: Float): Float = defaultValue * 2
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
