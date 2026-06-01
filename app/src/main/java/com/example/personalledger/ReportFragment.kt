@@ -118,7 +118,7 @@ class ReportFragment : Fragment() {
     }
 
     fun exportData() {
-        val fileName = "轻帐备份_${
+        val fileName = "轻账备份_${
             SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         }.json"
         createDocumentLauncher.launch(fileName)

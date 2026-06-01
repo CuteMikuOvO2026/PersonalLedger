@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">轻帐</string>
+    <string name="app_name">轻账</string>
     <string name="currency_symbol">¥</string>
     <string name="home_balance_title">本月结余</string>
     <string name="home_overspend_title">本月超支</string>
