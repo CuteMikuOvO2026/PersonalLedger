@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -27,6 +28,7 @@ class DataStoreManager(private val context: Context) {
         val HISTORY_LIST_KEY = stringPreferencesKey("ledger_history_list")
         val BUDGET_KEY = doublePreferencesKey("ledger_budget_decimal")
         val LEGACY_BUDGET_KEY = intPreferencesKey("ledger_budget")
+        val CUSTOM_CATEGORIES_KEY = stringPreferencesKey("custom_categories")
 
     }
 
@@ -38,6 +40,20 @@ class DataStoreManager(private val context: Context) {
         preferences[BUDGET_KEY] ?: preferences[LEGACY_BUDGET_KEY]?.toDouble() ?: 5000.0
     }
 
+    val customCategoriesFlow: Flow<List<CategoryItem>> = context.dataStore.data.map { preferences ->
+        val jsonString = preferences[CUSTOM_CATEGORIES_KEY]
+        if (jsonString.isNullOrEmpty()) {
+            emptyList()
+        } else {
+            try {
+                val type = object : TypeToken<List<CategoryItem>>() {}.type
+                gson.fromJson<List<CategoryItem>>(jsonString, type) ?: emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+    }
+
     val historyListFlow: Flow<List<LedgerItem>> = context.dataStore.data.map { preferences ->
         val jsonString = preferences[HISTORY_LIST_KEY]
         if (jsonString.isNullOrEmpty()) {
@@ -45,7 +61,8 @@ class DataStoreManager(private val context: Context) {
         } else {
             try {
                 val type = object : TypeToken<List<LedgerItem>>() {}.type
-                gson.fromJson<List<LedgerItem>>(jsonString, type) ?: emptyList()
+                val rawList = gson.fromJson<List<LedgerItem>>(jsonString, type) ?: emptyList()
+                rawList.map { if (it.id.isEmpty()) it.copy(id = UUID.randomUUID().toString()) else it }
             } catch (_: Exception) {
                 emptyList()
             }
@@ -66,6 +83,22 @@ class DataStoreManager(private val context: Context) {
         }
     }
 
+    suspend fun saveCustomCategories(categories: List<CategoryItem>) {
+        val jsonString = gson.toJson(categories)
+        context.dataStore.edit { preferences ->
+            preferences[CUSTOM_CATEGORIES_KEY] = jsonString
+        }
+    }
+
+    suspend fun saveAmountAndHistory(amount: Double, history: List<LedgerItem>) {
+        val jsonString = gson.toJson(history)
+        context.dataStore.edit { preferences ->
+            preferences[AMOUNT_KEY] = amount
+            preferences.remove(LEGACY_AMOUNT_KEY)
+            preferences[HISTORY_LIST_KEY] = jsonString
+        }
+    }
+
     suspend fun saveHistoryList(list: List<LedgerItem>) {
         val jsonString = gson.toJson(list)
         context.dataStore.edit { preferences ->
@@ -80,10 +113,11 @@ class DataStoreManager(private val context: Context) {
     }
 
     data class BackupData(
-        val version: Int = 1,
+        val version: Int = 2,
         val items: List<LedgerItem>,
         val amount: Double,
-        val budget: Double
+        val budget: Double,
+        val customCategories: List<CategoryItem> = emptyList()
     )
 
     suspend fun getBackupJson(): String {
@@ -92,7 +126,8 @@ class DataStoreManager(private val context: Context) {
         val items: List<LedgerItem> = if (jsonString.isNotEmpty()) {
             try {
                 val type = object : TypeToken<List<LedgerItem>>() {}.type
-                gson.fromJson(jsonString, type) ?: emptyList()
+                val rawList = gson.fromJson<List<LedgerItem>>(jsonString, type) ?: emptyList()
+                rawList.map { if (it.id.isEmpty()) it.copy(id = UUID.randomUUID().toString()) else it }
             } catch (_: Exception) {
                 emptyList()
             }
@@ -102,10 +137,17 @@ class DataStoreManager(private val context: Context) {
         val amountValue = prefs[AMOUNT_KEY] ?: prefs[LEGACY_AMOUNT_KEY]?.toDouble() ?: 0.0
         val budgetValue = prefs[BUDGET_KEY] ?: prefs[LEGACY_BUDGET_KEY]?.toDouble() ?: 5000.0
 
+        val customCats = prefs[CUSTOM_CATEGORIES_KEY]?.let { json ->
+            try {
+                val type = object : TypeToken<List<CategoryItem>>() {}.type
+                gson.fromJson<List<CategoryItem>>(json, type)
+            } catch (_: Exception) { null }
+        } ?: emptyList()
         val backup = BackupData(
             items = items,
             amount = amountValue,
-            budget = budgetValue
+            budget = budgetValue,
+            customCategories = customCats
         )
         return gson.toJson(backup)
     }
@@ -115,10 +157,14 @@ class DataStoreManager(private val context: Context) {
             val backup = gson.fromJson(json, BackupData::class.java)
                 ?: return false
 
+            val fixedItems = backup.items.map {
+                if (it.id.isEmpty()) it.copy(id = UUID.randomUUID().toString()) else it
+            }
             context.dataStore.edit { preferences ->
-                preferences[HISTORY_LIST_KEY] = gson.toJson(backup.items)
+                preferences[HISTORY_LIST_KEY] = gson.toJson(fixedItems)
                 preferences[AMOUNT_KEY] = backup.amount
                 preferences[BUDGET_KEY] = backup.budget
+                preferences[CUSTOM_CATEGORIES_KEY] = gson.toJson(backup.customCategories)
                 preferences.remove(LEGACY_AMOUNT_KEY)
                 preferences.remove(LEGACY_BUDGET_KEY)
             }

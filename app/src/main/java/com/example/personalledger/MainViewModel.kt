@@ -22,9 +22,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val dataStoreManager = DataStoreManager(application)
 
-    val amount: LiveData<String> = dataStoreManager.amountFlow.asLiveData().mapToFormattedString()
+    val amount: LiveData<String> = dataStoreManager.amountFlow.asLiveData().map { formatAmount(it) }
     val budget: LiveData<Double> = dataStoreManager.budgetFlow.asLiveData()
     val historyList: LiveData<List<LedgerItem>> = dataStoreManager.historyListFlow.asLiveData()
+    val importEvent = MutableLiveData<Unit>()
 
     val todayIncome: LiveData<String> = historyList.map { list ->
         formatAmount(calculateTodayIncomeFromList(list))
@@ -46,35 +47,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val budgetProgress: LiveData<Float> = budgetProgressSource
 
-    val expenseCategories = listOf(
+    private val defaultExpenseCategories = listOf(
         CategoryItem("餐饮", R.drawable.ic_food, "expense"),
         CategoryItem("交通", R.drawable.ic_transport, "expense"),
         CategoryItem("购物", R.drawable.ic_shopping, "expense"),
         CategoryItem("娱乐", R.drawable.ic_entertainment, "expense"),
         CategoryItem("医疗", R.drawable.ic_medical, "expense"),
         CategoryItem("教育", R.drawable.ic_education, "expense"),
-        CategoryItem("住房", R.drawable.ic_housing, "expense"),
-        CategoryItem("其他", R.drawable.ic_other, "expense")
+        CategoryItem("住房", R.drawable.ic_housing, "expense")
     )
 
-    val incomeCategories = listOf(
+    private val defaultIncomeCategories = listOf(
         CategoryItem("工资", R.drawable.ic_salary, "income"),
         CategoryItem("奖金", R.drawable.ic_bonus, "income"),
         CategoryItem("投资", R.drawable.ic_investment, "income"),
-        CategoryItem("兼职", R.drawable.ic_side_job, "income"),
-        CategoryItem("其他", R.drawable.ic_other, "income")
+        CategoryItem("兼职", R.drawable.ic_side_job, "income")
     )
+
+    val expenseCategories: LiveData<List<CategoryItem>> =
+        dataStoreManager.customCategoriesFlow.asLiveData().map { custom ->
+            defaultExpenseCategories + custom.filter { it.type == "expense" }
+        }
+
+    val incomeCategories: LiveData<List<CategoryItem>> =
+        dataStoreManager.customCategoriesFlow.asLiveData().map { custom ->
+            defaultIncomeCategories + custom.filter { it.type == "income" }
+        }
+
+    fun addCustomCategory(name: String, iconRes: Int, type: String) {
+        viewModelScope.launch {
+            val current = dataStoreManager.customCategoriesFlow.first().toMutableList()
+            current.add(CategoryItem(name, iconRes, type, isCustom = true))
+            dataStoreManager.saveCustomCategories(current)
+        }
+    }
+
+    fun removeCustomCategory(category: CategoryItem) {
+        viewModelScope.launch {
+            val current = dataStoreManager.customCategoriesFlow.first().toMutableList()
+            current.removeAll { it.name == category.name && it.type == category.type }
+            dataStoreManager.saveCustomCategories(current)
+        }
+    }
 
     init {
         updateDailyStats()
-    }
-
-    private fun LiveData<Double>.mapToFormattedString(): LiveData<String> {
-        val result = MutableLiveData<String>()
-        observeForever {
-            result.value = formatAmount(it)
-        }
-        return result
     }
 
     private fun formatAmount(amount: Double): String {
@@ -137,11 +154,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 currentTotal - amountToAdd
             }
 
-            dataStoreManager.saveAmount(newTotal)
-
             val oldList = dataStoreManager.historyListFlow.first()
             val newList = mutableListOf(newItem).apply { addAll(oldList) }
-            dataStoreManager.saveHistoryList(newList)
+            dataStoreManager.saveAmountAndHistory(newTotal, newList)
 
             updateDailyStatsInternal()
         }
@@ -150,7 +165,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteLedgerEntry(item: LedgerItem) {
         viewModelScope.launch {
             val currentList = dataStoreManager.historyListFlow.first().toMutableList()
-            if (currentList.remove(item)) {
+            if (currentList.removeAll { it.id == item.id }) {
                 val currentTotal = dataStoreManager.amountFlow.first()
                 val amountToSubtract = parseAmount(item.amount)
                 val newTotal = if (item.isExpense) {
@@ -159,8 +174,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     currentTotal + amountToSubtract
                 }
 
-                dataStoreManager.saveAmount(newTotal)
-                dataStoreManager.saveHistoryList(currentList)
+                dataStoreManager.saveAmountAndHistory(newTotal, currentList)
                 updateDailyStatsInternal()
             }
         }
@@ -169,7 +183,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateLedgerEntry(oldItem: LedgerItem, newItem: LedgerItem) {
         viewModelScope.launch {
             val currentList = dataStoreManager.historyListFlow.first().toMutableList()
-            val index = currentList.indexOf(oldItem)
+            val index = currentList.indexOfFirst { it.id == oldItem.id }
             if (index == -1) return@launch
 
             currentList[index] = newItem
@@ -186,8 +200,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 revertedTotal - parseAmount(newItem.amount)
             }
 
-            dataStoreManager.saveAmount(updatedTotal)
-            dataStoreManager.saveHistoryList(currentList)
+            dataStoreManager.saveAmountAndHistory(updatedTotal, currentList)
             updateDailyStatsInternal()
         }
     }
@@ -258,6 +271,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun getCsvString(): String {
+        val sb = StringBuilder()
+        sb.append("\uFEFF") // BOM for Excel Chinese compatibility
+        sb.appendLine("时间,类型,分类,金额,备注")
+        historyList.value.orEmpty().forEach { item ->
+            val type = if (item.isExpense) "支出" else "收入"
+            val escapedNote = item.note.replace("\"", "\"\"")
+            sb.appendLine("${item.time},$type,${item.categoryName},\"${item.amount}\",\"$escapedNote\"")
+        }
+        return sb.toString()
+    }
+
     fun getBackupJson(onResult: (String) -> Unit) {
         viewModelScope.launch {
             onResult(dataStoreManager.getBackupJson())
@@ -269,6 +294,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val success = dataStoreManager.restoreFromBackup(json)
             if (success) {
                 updateDailyStatsInternal()
+                importEvent.postValue(Unit)
             }
             onResult(success)
         }

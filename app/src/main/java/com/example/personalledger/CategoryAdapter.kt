@@ -7,7 +7,8 @@ import android.view.ViewGroup
 import com.example.personalledger.databinding.ItemCategoryBinding
 
 class CategoryAdapter(
-    private val onCategoryClick: (CategoryItem) -> Unit
+    private val onCategoryClick: (CategoryItem) -> Unit,
+    private val onCustomLongClick: ((CategoryItem) -> Unit)? = null
 ) : RecyclerView.Adapter<CategoryAdapter.CategoryViewHolder>() {
 
     private var categories: List<CategoryItem> = emptyList()
@@ -28,7 +29,7 @@ class CategoryAdapter(
             parent,
             false
         )
-        return CategoryViewHolder(binding, onCategoryClick)
+        return CategoryViewHolder(binding, onCategoryClick, onCustomLongClick)
     }
 
     override fun onBindViewHolder(holder: CategoryViewHolder, position: Int) {
@@ -39,7 +40,8 @@ class CategoryAdapter(
 
     inner class CategoryViewHolder(
         private val binding: ItemCategoryBinding,
-        private val onCategoryClick: (CategoryItem) -> Unit
+        private val onCategoryClick: (CategoryItem) -> Unit,
+        private val onCustomLongClick: ((CategoryItem) -> Unit)?
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(category: CategoryItem, isSelected: Boolean, position: Int) {
@@ -73,6 +75,13 @@ class CategoryAdapter(
                 onCategoryClick(category)
                 binding.root.isFocusable = false
                 binding.root.isFocusableInTouchMode = false
+            }
+
+            if (category.isCustom && onCustomLongClick != null) {
+                binding.root.setOnLongClickListener {
+                    onCustomLongClick(category)
+                    true
+                }
             }
         }
     }
