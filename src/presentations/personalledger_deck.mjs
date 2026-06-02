@@ -2,11 +2,13 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
+// 使用前需将以下路径替换为本机的 artifact-tool 和 skia-canvas 路径
+// Replace these paths with your local artifact-tool and skia-canvas locations
 const artifact = await import(
-  "file:///C:/Users/ovo/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/@oai/artifact-tool/dist/artifact_tool.mjs"
+  "file:///path/to/artifact-tool/dist/artifact_tool.mjs"
 );
 const { Canvas } = await import(
-  "file:///C:/Users/ovo/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/@oai/artifact-tool/node_modules/skia-canvas/lib/index.js"
+  "file:///path/to/skia-canvas/lib/index.js"
 );
 
 const {

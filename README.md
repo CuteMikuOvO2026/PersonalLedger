@@ -1,7 +1,19 @@
 # PersonalLedger
 
-个人帐本APP 本科毕设作品
+个人账本 App — 基于 Kotlin + Jetpack 的本地离线记账工具。
 
-## 点击链接下载最新安装包
+## 功能
 
-https://github.com/CuteMikuOvO2026/PersonalLedger/releases/download/1.6/app-1.6.apk
+- 收支记录（分类、备注、时间）
+- 月度预算与进度预警
+- 饼图 / 柱状图 / 折线图数据报表
+- JSON 备份恢复、CSV 导出
+- 自定义分类
+
+## 技术栈
+
+Kotlin · Jetpack (ViewModel / LiveData / DataStore) · MPAndroidChart · Material 3
+
+## 构建
+
+Android Studio 打开项目，Gradle Sync 后运行。
