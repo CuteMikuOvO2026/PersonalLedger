@@ -225,8 +225,8 @@ slide(
               { width: wrap(840), height: hug }
             ),
             row({ width: fill, height: hug, gap: 18 }, [
-              kicker("作者：王禹鑫"),
-              kicker("学号：202251280", COLORS.orange),
+              kicker("作者：[name]"),
+              kicker("学号：[student_id]", COLORS.orange),
               kicker("专业：软件工程", COLORS.teal),
             ]),
           ]
