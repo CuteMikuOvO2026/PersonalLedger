@@ -80,4 +80,21 @@
     <string name="category_bonus">奖金</string>
     <string name="category_investment">投资</string>
     <string name="category_side_job">兼职</string>
+    <string name="add_category">+ 添加分类</string>
+    <string name="add_custom_category">添加自定义分类</string>
+    <string name="category_name_hint">输入分类名称</string>
+    <string name="category_name_empty">分类名称不能为空</string>
+    <string name="category_name_too_long">分类名称不能超过8个字</string>
+    <string name="delete_category_title">删除分类</string>
+    <string name="delete_category_message">确定要删除分类「%1$s」吗？\n已有记录的分类不会受影响。</string>
+    <string name="delete_undo">撤销</string>
+    <string name="deleted_message">记录已删除</string>
+    <string name="amount_filter">金额筛选</string>
+    <string name="amount_filter_hint_min">最低金额</string>
+    <string name="amount_filter_hint_max">最高金额</string>
+    <string name="amount_filter_clear">清除筛选</string>
+    <string name="export_csv">导出 CSV</string>
+    <string name="export_csv_success">CSV 导出成功</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">确定</string>
 </resources>

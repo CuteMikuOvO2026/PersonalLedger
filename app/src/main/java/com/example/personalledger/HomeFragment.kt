@@ -10,8 +10,10 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import com.google.android.material.snackbar.Snackbar
 import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
 import androidx.core.view.MenuProvider
@@ -44,6 +46,8 @@ class HomeFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
     private var currentFilter: LedgerFilter = LedgerFilter.All
     private var searchQuery: String = ""
+    private var minAmount: Double? = null
+    private var maxAmount: Double? = null
 
     private val ledgerAdapter: LedgerAdapter = LedgerAdapter(
         onEditClick = { item: LedgerItem ->
@@ -197,11 +201,23 @@ class HomeFragment : Fragment() {
                 expense
             )
         }
+
+        viewModel.importEvent.observe(viewLifecycleOwner) {
+            currentFilter = LedgerFilter.All
+            searchQuery = ""
+            minAmount = null
+            maxAmount = null
+            updateAmountFilterTint()
+            applyCurrentFilters()
+        }
     }
 
     private fun setupFilterClick() {
         binding.textViewAll.setOnClickListener {
             showFilterDialog()
+        }
+        binding.textAmountFilter.setOnClickListener {
+            showAmountFilterDialog()
         }
     }
 
@@ -212,8 +228,13 @@ class HomeFragment : Fragment() {
             LedgerFilter.Income -> list.filter { !it.isExpense }
             is LedgerFilter.Category -> list.filter { it.categoryName == filter.name }
         }
-        if (searchQuery.isBlank()) return typeFiltered
-        return typeFiltered.filter { it.note.contains(searchQuery, ignoreCase = true) }
+        val textFiltered = if (searchQuery.isBlank()) typeFiltered
+            else typeFiltered.filter { it.note.contains(searchQuery, ignoreCase = true) }
+        return if (minAmount == null && maxAmount == null) textFiltered
+            else textFiltered.filter { item ->
+                val amt = item.amount.toDoubleOrNull() ?: 0.0
+                (minAmount == null || amt >= minAmount!!) && (maxAmount == null || amt <= maxAmount!!)
+            }
     }
 
     private fun showFilterDialog() {
@@ -350,13 +371,70 @@ class HomeFragment : Fragment() {
             .show()
     }
 
+    private fun showAmountFilterDialog() {
+        val context = requireContext()
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(48, 32, 48, 0)
+        }
+        val editMin = EditText(context).apply {
+            hint = getString(R.string.amount_filter_hint_min)
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            if (minAmount != null) setText(String.format(Locale.getDefault(), "%.2f", minAmount))
+        }
+        val editMax = EditText(context).apply {
+            hint = getString(R.string.amount_filter_hint_max)
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = 24
+            }
+            if (maxAmount != null) setText(String.format(Locale.getDefault(), "%.2f", maxAmount))
+        }
+        layout.addView(editMin)
+        layout.addView(editMax)
+
+        AlertDialog.Builder(context)
+            .setTitle(R.string.amount_filter)
+            .setView(layout)
+            .setPositiveButton(R.string.confirm) { _, _ ->
+                minAmount = editMin.text.toString().toDoubleOrNull()
+                maxAmount = editMax.text.toString().toDoubleOrNull()
+                updateAmountFilterTint()
+                applyCurrentFilters()
+            }
+            .setNeutralButton(R.string.amount_filter_clear) { _, _ ->
+                minAmount = null
+                maxAmount = null
+                updateAmountFilterTint()
+                applyCurrentFilters()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun updateAmountFilterTint() {
+        val active = minAmount != null || maxAmount != null
+        val color = if (active) {
+            ContextCompat.getColor(requireContext(), R.color.md_theme_tertiary)
+        } else {
+            ContextCompat.getColor(requireContext(), R.color.text_secondary)
+        }
+        binding.textAmountFilter.setTextColor(color)
+    }
+
     private fun showDeleteConfirmDialog(item: LedgerItem) {
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.delete_record)
             .setMessage(R.string.delete_record_confirm)
             .setPositiveButton(R.string.delete_record) { _, _ ->
                 viewModel.deleteLedgerEntry(item)
-                Toast.makeText(context, getString(R.string.record_deleted), Toast.LENGTH_SHORT).show()
+                Snackbar.make(binding.coordinatorLayout, R.string.deleted_message, Snackbar.LENGTH_LONG)
+                    .setAction(R.string.delete_undo) {
+                        viewModel.addLedgerEntry(item)
+                    }
+                    .setAnchorView(binding.fabAdd)
+                    .show()
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()

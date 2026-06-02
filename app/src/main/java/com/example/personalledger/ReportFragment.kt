@@ -70,6 +70,12 @@ class ReportFragment : Fragment() {
         uri?.let { exportBackupTo(it) }
     }
 
+    private val createCsvLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        uri?.let { saveCsvTo(it) }
+    }
+
     private val openDocumentLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -122,6 +128,25 @@ class ReportFragment : Fragment() {
             SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         }.json"
         createDocumentLauncher.launch(fileName)
+    }
+
+    fun exportCsv() {
+        val fileName = "轻账记录_${
+            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        }.csv"
+        createCsvLauncher.launch(fileName)
+    }
+
+    private fun saveCsvTo(uri: Uri) {
+        try {
+            val csv = viewModel.getCsvString()
+            requireContext().contentResolver.openOutputStream(uri)?.use { stream ->
+                stream.write(csv.toByteArray(Charsets.UTF_8))
+            }
+            Toast.makeText(requireContext(), getString(R.string.export_csv_success), Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "CSV导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun exportBackupTo(uri: Uri) {
@@ -382,6 +407,11 @@ class ReportFragment : Fragment() {
                 return when (menuItem.itemId) {
                     R.id.action_export -> {
                         exportData()
+                        true
+                    }
+
+                    R.id.action_export_csv -> {
+                        exportCsv()
                         true
                     }
 

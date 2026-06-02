@@ -4,6 +4,7 @@ package com.example.personalledger
  * 账本历史记录数据类
  */
 data class LedgerItem(
+    val id: String = "",  // 唯一标识（空串表示旧数据，加载时自动补齐 UUID）
     val amount: String,   // 金额（格式化字符串）
     val note: String,     // 备注
     val time: String,     // 时间（格式化后的字符串）

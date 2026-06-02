@@ -11,6 +11,10 @@
     app:strokeColor="@color/md_theme_outlineVariant"
     app:strokeWidth="1dp">
 
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -101,7 +105,20 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:clipToPadding="false" />
+            android:clipToPadding="false"
+            android:nestedScrollingEnabled="false" />
+
+        <TextView
+            android:id="@+id/button_add_category"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="?attr/selectableItemBackground"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="6dp"
+            android:text="@string/add_category"
+            android:textColor="@color/md_theme_primary"
+            android:textSize="13sp" />
 
         <com.google.android.material.textfield.TextInputLayout
             style="@style/Widget.PersonalLedger.OutlinedInput"
@@ -145,5 +162,7 @@
             app:cornerRadius="16dp"
             app:elevation="0dp" />
     </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
 
 </com.google.android.material.card.MaterialCardView>
