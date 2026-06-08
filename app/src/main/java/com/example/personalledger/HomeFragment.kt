@@ -22,13 +22,14 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.DefaultItemAnimator
-import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.personalledger.databinding.FragmentHomeBinding
+import com.google.android.material.datepicker.MaterialDatePicker
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.abs
 
 class HomeFragment : Fragment() {
@@ -48,6 +49,10 @@ class HomeFragment : Fragment() {
     private var searchQuery: String = ""
     private var minAmount: Double? = null
     private var maxAmount: Double? = null
+    private var dateFrom: Long? = null
+    private var dateTo: Long? = null
+
+
 
     private val ledgerAdapter: LedgerAdapter = LedgerAdapter(
         onEditClick = { item: LedgerItem ->
@@ -85,76 +90,7 @@ class HomeFragment : Fragment() {
             layoutManager = LinearLayoutManager(context)
             adapter = ledgerAdapter
             itemAnimator = DefaultItemAnimator()
-            attachSwipeActions(this)
         }
-    }
-
-    private fun attachSwipeActions(recyclerView: RecyclerView) {
-        val callback = object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT) {
-            override fun onMove(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder,
-                target: RecyclerView.ViewHolder
-            ): Boolean = false
-
-            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float = 0.2f
-
-            override fun getSwipeEscapeVelocity(defaultValue: Float): Float = defaultValue * 2
-
-            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                val position = viewHolder.adapterPosition
-                if (position == RecyclerView.NO_POSITION) return
-
-                if (direction == ItemTouchHelper.LEFT) {
-                    ledgerAdapter.setOpenPosition(position)
-                } else {
-                    ledgerAdapter.closeOpenItem()
-                }
-            }
-
-            override fun onChildDraw(
-                c: android.graphics.Canvas,
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder,
-                dX: Float,
-                dY: Float,
-                actionState: Int,
-                isCurrentlyActive: Boolean
-            ) {
-                if (actionState != ItemTouchHelper.ACTION_STATE_SWIPE) {
-                    super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
-                    return
-                }
-
-                val foregroundView = viewHolder.itemView.findViewById<View>(R.id.foreground_card)
-                val actionView = viewHolder.itemView.findViewById<View>(R.id.action_container)
-                val maxSwipeDistance = actionView.width.toFloat()
-                val isOpen = ledgerAdapter.getOpenPosition() == viewHolder.adapterPosition
-                val startX = if (isOpen) -maxSwipeDistance else 0f
-                val targetTranslation = (startX + dX).coerceIn(-maxSwipeDistance, 0f)
-
-                foregroundView.translationX = targetTranslation
-            }
-
-            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
-                super.clearView(recyclerView, viewHolder)
-                val foregroundView = viewHolder.itemView.findViewById<View>(R.id.foreground_card)
-                val actionView = viewHolder.itemView.findViewById<View>(R.id.action_container)
-                val maxSwipeDistance = actionView.width.toFloat()
-                val shouldStayOpen = abs(foregroundView.translationX) >= maxSwipeDistance / 2f
-                val position = viewHolder.adapterPosition
-
-                if (shouldStayOpen && position != RecyclerView.NO_POSITION) {
-                    ledgerAdapter.setOpenPosition(position)
-                    foregroundView.translationX = -maxSwipeDistance
-                } else {
-                    ledgerAdapter.closeOpenItem()
-                    foregroundView.translationX = 0f
-                }
-            }
-        }
-
-        ItemTouchHelper(callback).attachToRecyclerView(recyclerView)
     }
 
     private fun setupObservers() {
@@ -207,7 +143,10 @@ class HomeFragment : Fragment() {
             searchQuery = ""
             minAmount = null
             maxAmount = null
+            dateFrom = null
+            dateTo = null
             updateAmountFilterTint()
+            updateDateFilterTint()
             applyCurrentFilters()
         }
     }
@@ -218,6 +157,9 @@ class HomeFragment : Fragment() {
         }
         binding.textAmountFilter.setOnClickListener {
             showAmountFilterDialog()
+        }
+        binding.textDateFilter.setOnClickListener {
+            showDateFilterDialog()
         }
     }
 
@@ -230,11 +172,40 @@ class HomeFragment : Fragment() {
         }
         val textFiltered = if (searchQuery.isBlank()) typeFiltered
             else typeFiltered.filter { it.note.contains(searchQuery, ignoreCase = true) }
-        return if (minAmount == null && maxAmount == null) textFiltered
+        val amountFiltered = if (minAmount == null && maxAmount == null) textFiltered
             else textFiltered.filter { item ->
                 val amt = item.amount.toDoubleOrNull() ?: 0.0
                 (minAmount == null || amt >= minAmount!!) && (maxAmount == null || amt <= maxAmount!!)
             }
+        return if (dateFrom == null && dateTo == null) amountFiltered
+            else amountFiltered.filter { item -> isItemInDateRange(item) }
+    }
+
+    private fun isItemInDateRange(item: LedgerItem): Boolean {
+        val itemDate = parseItemDate(item.time) ?: return false
+        if (dateFrom != null && itemDate < dateFrom!!) return false
+        if (dateTo != null && itemDate > dateTo!!) return false
+        return true
+    }
+
+    private fun parseItemDate(time: String): Long? {
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            sdf.timeZone = TimeZone.getDefault()
+            val dateStr = time.take(10)
+            val date = sdf.parse(dateStr)
+            date?.let {
+                val cal = Calendar.getInstance()
+                cal.time = it
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                cal.timeInMillis
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun showFilterDialog() {
@@ -421,6 +392,36 @@ class HomeFragment : Fragment() {
             ContextCompat.getColor(requireContext(), R.color.text_secondary)
         }
         binding.textAmountFilter.setTextColor(color)
+    }
+
+    private fun showDateFilterDialog() {
+        val rangePicker = MaterialDatePicker.Builder.dateRangePicker()
+            .setTitleText(getString(R.string.date_filter))
+            .apply {
+                if (dateFrom != null && dateTo != null) {
+                    setSelection(androidx.core.util.Pair(dateFrom!!, dateTo!!))
+                }
+            }
+            .build()
+
+        rangePicker.addOnPositiveButtonClickListener { selection ->
+            dateFrom = selection.first
+            dateTo = selection.second
+            updateDateFilterTint()
+            applyCurrentFilters()
+        }
+
+        rangePicker.show(childFragmentManager, "date_range_picker")
+    }
+
+    private fun updateDateFilterTint() {
+        val active = dateFrom != null || dateTo != null
+        val color = if (active) {
+            ContextCompat.getColor(requireContext(), R.color.md_theme_primary)
+        } else {
+            ContextCompat.getColor(requireContext(), R.color.text_secondary)
+        }
+        binding.textDateFilter.setTextColor(color)
     }
 
     private fun showDeleteConfirmDialog(item: LedgerItem) {

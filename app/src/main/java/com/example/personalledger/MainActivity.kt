@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
+import java.util.Locale
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -20,6 +21,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun attachBaseContext(newBase: Context) {
         val configuration = Configuration(newBase.resources.configuration).apply {
+            setLocale(Locale.CHINESE)
             fontScale = 1.0f
         }
         super.attachBaseContext(newBase.createConfigurationContext(configuration))
@@ -27,6 +29,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Lock the entire app to Chinese locale
+        Locale.setDefault(Locale.CHINESE)
         enableEdgeToEdge()
 
         window.statusBarColor = Color.TRANSPARENT

@@ -352,6 +352,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return Pair(entries, labels)
     }
 
+    fun getReportSummary(): String {
+        val totalIncome = calculateTotalIncome()
+        val totalExpense = calculateTotalExpense()
+        val balance = totalIncome - totalExpense
+        val df = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+        return buildString {
+            appendLine("报表生成时间: ${df.format(Date())}")
+            appendLine("总收入: ¥${formatAmount(totalIncome)}")
+            appendLine("总支出: ¥${formatAmount(totalExpense)}")
+            appendLine("结余: ¥${formatAmount(balance)}")
+            appendLine("当月预算: ¥${formatAmount(budget.value ?: 0.0)}")
+            appendLine("记录总数: ${historyList.value?.size ?: 0}")
+        }
+    }
+
     fun getBalanceLineEntries(): List<Entry> {
         val sortedList = historyList.value?.sortedBy { item ->
             try {

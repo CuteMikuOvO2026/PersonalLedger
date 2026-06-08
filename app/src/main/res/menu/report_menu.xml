@@ -16,6 +16,10 @@
         android:title="@string/export_csv"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_export_pdf"
+        android:title="@string/export_pdf"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_reset"
         android:icon="@drawable/ic_action_reset"
         android:title="@string/reset_confirm"

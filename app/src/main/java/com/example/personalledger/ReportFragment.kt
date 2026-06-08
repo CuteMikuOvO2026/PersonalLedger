@@ -1,7 +1,10 @@
 package com.example.personalledger
 
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -76,6 +79,12 @@ class ReportFragment : Fragment() {
         uri?.let { saveCsvTo(it) }
     }
 
+    private val createPdfLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri: Uri? ->
+        uri?.let { generatePdfTo(it) }
+    }
+
     private val openDocumentLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -137,6 +146,13 @@ class ReportFragment : Fragment() {
         createCsvLauncher.launch(fileName)
     }
 
+    fun exportPdf() {
+        val fileName = "轻账报表_${
+            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        }.pdf"
+        createPdfLauncher.launch(fileName)
+    }
+
     private fun saveCsvTo(uri: Uri) {
         try {
             val csv = viewModel.getCsvString()
@@ -146,6 +162,123 @@ class ReportFragment : Fragment() {
             Toast.makeText(requireContext(), getString(R.string.export_csv_success), Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(requireContext(), "CSV导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun generatePdfTo(uri: Uri) {
+        try {
+            val pageWidth = 595
+            val pageHeight = 842
+            val margin = 40
+            val contentWidth = pageWidth - margin * 2
+
+            val document = PdfDocument()
+            val textPaint = Paint().apply {
+                color = Color.BLACK
+                isAntiAlias = true
+            }
+            val titlePaint = Paint().apply {
+                color = Color.BLACK
+                isAntiAlias = true
+                textSize = 22f
+                isFakeBoldText = true
+            }
+            val bodyPaint = Paint().apply {
+                color = Color.DKGRAY
+                isAntiAlias = true
+                textSize = 13f
+            }
+            val chartTitlePaint = Paint().apply {
+                color = Color.BLACK
+                isAntiAlias = true
+                textSize = 16f
+                isFakeBoldText = true
+            }
+
+            val summaryText = viewModel.getReportSummary()
+            val pieBitmap = binding.pieChartExpense.chartBitmap
+            val barBitmap = binding.barChartWeekly.chartBitmap
+            val lineBitmap = binding.lineChartBalance.chartBitmap
+
+            // --- Page 1: Summary + Pie Chart ---
+            var pageInfo = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create())
+            var canvas: Canvas = pageInfo.canvas
+            var y = margin
+
+            canvas.drawText("轻账 · 数据报表", margin.toFloat(), y.toFloat(), titlePaint)
+            y += 32
+
+            for (line in summaryText.lines()) {
+                if (line.isNotBlank()) {
+                    canvas.drawText(line, margin.toFloat(), y.toFloat(), bodyPaint)
+                    y += 20
+                }
+            }
+            y += 12
+
+            canvas.drawText(getString(R.string.pdf_title_expense_share), margin.toFloat(), y.toFloat(), chartTitlePaint)
+            y += 24
+
+            val pieWidth = 460
+            val pieHeight = 460
+            val pieLeft = (pageWidth - pieWidth) / 2
+            if (pieBitmap.height > 0 && pieBitmap.width > 0) {
+                val scaledPie = android.graphics.Bitmap.createScaledBitmap(pieBitmap, pieWidth, pieHeight, true)
+                canvas.drawBitmap(scaledPie, pieLeft.toFloat(), y.toFloat(), null)
+                scaledPie.recycle()
+            }
+            document.finishPage(pageInfo)
+
+            // --- Page 2: Bar Chart ---
+            pageInfo = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 2).create())
+            canvas = pageInfo.canvas
+            y = margin
+
+            canvas.drawText(getString(R.string.pdf_title_weekly_expense), margin.toFloat(), y.toFloat(), chartTitlePaint)
+            y += 28
+
+            val barMaxWidth = 500
+            val barMaxHeight = 600
+            if (barBitmap.height > 0 && barBitmap.width > 0) {
+                val barScale = minOf(barMaxWidth.toFloat() / barBitmap.width, barMaxHeight.toFloat() / barBitmap.height)
+                val barW = (barBitmap.width * barScale).toInt()
+                val barH = (barBitmap.height * barScale).toInt()
+                val barLeft = (pageWidth - barW) / 2
+                val scaledBar = android.graphics.Bitmap.createScaledBitmap(barBitmap, barW, barH, true)
+                canvas.drawBitmap(scaledBar, barLeft.toFloat(), y.toFloat(), null)
+                scaledBar.recycle()
+            }
+            document.finishPage(pageInfo)
+
+            // --- Page 3: Line Chart ---
+            pageInfo = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 3).create())
+            canvas = pageInfo.canvas
+            y = margin
+
+            canvas.drawText(getString(R.string.pdf_title_balance_trend), margin.toFloat(), y.toFloat(), chartTitlePaint)
+            y += 28
+
+            val lineMaxWidth = 500
+            val lineMaxHeight = 600
+            if (lineBitmap.height > 0 && lineBitmap.width > 0) {
+                val lineScale = minOf(lineMaxWidth.toFloat() / lineBitmap.width, lineMaxHeight.toFloat() / lineBitmap.height)
+                val lineW = (lineBitmap.width * lineScale).toInt()
+                val lineH = (lineBitmap.height * lineScale).toInt()
+                val lineLeft = (pageWidth - lineW) / 2
+                val scaledLine = android.graphics.Bitmap.createScaledBitmap(lineBitmap, lineW, lineH, true)
+                canvas.drawBitmap(scaledLine, lineLeft.toFloat(), y.toFloat(), null)
+                scaledLine.recycle()
+            }
+            document.finishPage(pageInfo)
+
+            requireContext().contentResolver.openOutputStream(uri)?.use { stream ->
+                document.writeTo(stream)
+            }
+            document.close()
+
+            Toast.makeText(requireContext(), getString(R.string.export_pdf_success), Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), getString(R.string.export_pdf_failed) + ": ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -412,6 +545,11 @@ class ReportFragment : Fragment() {
 
                     R.id.action_export_csv -> {
                         exportCsv()
+                        true
+                    }
+
+                    R.id.action_export_pdf -> {
+                        exportPdf()
                         true
                     }
 

@@ -260,6 +260,19 @@
                     android:text="@string/amount_filter"
                     android:textColor="@color/md_theme_tertiary"
                     android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/text_date_filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="4dp"
+                    android:text="@string/date_filter"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
             </LinearLayout>
 
             <androidx.recyclerview.widget.RecyclerView

@@ -97,4 +97,15 @@
     <string name="export_csv_success">CSV 导出成功</string>
     <string name="cancel">取消</string>
     <string name="confirm">确定</string>
+    <string name="date_filter">日期筛选</string>
+    <string name="date_filter_hint_start">起始日期</string>
+    <string name="date_filter_hint_end">结束日期</string>
+    <string name="date_filter_clear">清除日期</string>
+    <string name="export_pdf">导出 PDF</string>
+    <string name="export_pdf_success">PDF 导出成功</string>
+    <string name="export_pdf_failed">PDF 导出失败</string>
+    <string name="pdf_exporting">正在生成 PDF…</string>
+    <string name="pdf_title_expense_share">支出分类占比</string>
+    <string name="pdf_title_weekly_expense">最近 7 天每日支出</string>
+    <string name="pdf_title_balance_trend">资产变化趋势</string>
 </resources>
