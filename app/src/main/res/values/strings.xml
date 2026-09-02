@@ -103,6 +103,13 @@
     <string name="pdf_exporting">正在生成 PDF…</string>
     <string name="pdf_title_expense_share">支出分类占比</string>
     <string name="pdf_title_weekly_expense">最近 7 天每日支出</string>
+    <string name="pdf_report_title">轻账 · 数据报表</string>
+    <string name="csv_export_failed">CSV导出失败：%1$s</string>
+    <string name="backup_export_failed">导出失败：%1$s</string>
+    <string name="backup_import_failed">导入失败：%1$s</string>
+    <string name="backup_file_name">轻账备份_%1$s.json</string>
+    <string name="csv_file_name">轻账记录_%1$s.csv</string>
+    <string name="pdf_file_name">轻账报表_%1$s.pdf</string>
 
     <!-- 自动记账 -->
     <string name="auto_bookkeeping">自动记账</string>

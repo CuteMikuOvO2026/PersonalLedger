@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -25,7 +26,9 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
  */
 class DataStoreManager(private val context: Context) {
 
-    private val gson = Gson()
+    private val gson: Gson = GsonBuilder()
+        .registerTypeAdapter(LedgerItem::class.java, LedgerItemJsonAdapter())
+        .create()
 
     companion object {
         val BUDGET_KEY = doublePreferencesKey("ledger_budget_decimal")

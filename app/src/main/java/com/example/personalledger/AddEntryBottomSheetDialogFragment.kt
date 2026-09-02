@@ -16,10 +16,8 @@ import androidx.recyclerview.widget.GridLayoutManager
 import com.example.personalledger.databinding.BottomSheetInputBinding
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.tabs.TabLayout
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.UUID
+import kotlin.math.roundToLong
 
 class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
 
@@ -47,14 +45,14 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         editingItem = arguments?.let { bundle ->
-            if (!bundle.containsKey(ARG_EDIT_TIME)) {
+            if (!bundle.containsKey(ARG_EDIT_TIME_MILLIS)) {
                 null
             } else {
                 LedgerItem(
                     id = bundle.getString(ARG_EDIT_ID).orEmpty(),
-                    amount = bundle.getString(ARG_EDIT_AMOUNT).orEmpty(),
+                    amountCents = bundle.getLong(ARG_EDIT_AMOUNT_CENTS, 0L),
                     note = bundle.getString(ARG_EDIT_NOTE).orEmpty(),
-                    time = bundle.getString(ARG_EDIT_TIME).orEmpty(),
+                    timeMillis = bundle.getLong(ARG_EDIT_TIME_MILLIS, 0L),
                     isExpense = bundle.getBoolean(ARG_EDIT_IS_EXPENSE, true),
                     categoryName = bundle.getString(ARG_EDIT_CATEGORY_NAME).orEmpty(),
                     categoryIconRes = bundle.getInt(ARG_EDIT_CATEGORY_ICON, android.R.drawable.ic_menu_agenda)
@@ -181,8 +179,8 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
 
         val item = LedgerItem(
             id = editingItem?.id?.ifEmpty { UUID.randomUUID().toString() } ?: UUID.randomUUID().toString(),
-            time = editingItem?.time ?: SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()),
-            amount = String.format(Locale.getDefault(), "%.2f", amount),
+            timeMillis = editingItem?.timeMillis ?: System.currentTimeMillis(),
+            amountCents = (amount * 100).roundToLong(),
             isExpense = isExpense,
             categoryName = selectedCategory.name,
             categoryIconRes = selectedCategory.iconRes,
@@ -252,9 +250,9 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
 
     companion object {
         const val TAG = "AddEntryBottomSheet"
-        private const val ARG_EDIT_AMOUNT = "arg_edit_amount"
+        private const val ARG_EDIT_AMOUNT_CENTS = "arg_edit_amount_cents"
         private const val ARG_EDIT_NOTE = "arg_edit_note"
-        private const val ARG_EDIT_TIME = "arg_edit_time"
+        private const val ARG_EDIT_TIME_MILLIS = "arg_edit_time_millis"
         private const val ARG_EDIT_IS_EXPENSE = "arg_edit_is_expense"
         private const val ARG_EDIT_CATEGORY_NAME = "arg_edit_category_name"
         private const val ARG_EDIT_CATEGORY_ICON = "arg_edit_category_icon"
@@ -263,9 +261,9 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
         fun newInstance(item: LedgerItem): AddEntryBottomSheetDialogFragment {
             return AddEntryBottomSheetDialogFragment().apply {
                 arguments = Bundle().apply {
-                    putString(ARG_EDIT_AMOUNT, item.amount)
+                    putLong(ARG_EDIT_AMOUNT_CENTS, item.amountCents)
                     putString(ARG_EDIT_NOTE, item.note)
-                    putString(ARG_EDIT_TIME, item.time)
+                    putLong(ARG_EDIT_TIME_MILLIS, item.timeMillis)
                     putBoolean(ARG_EDIT_IS_EXPENSE, item.isExpense)
                     putString(ARG_EDIT_CATEGORY_NAME, item.categoryName)
                     putInt(ARG_EDIT_CATEGORY_ICON, item.categoryIconRes)

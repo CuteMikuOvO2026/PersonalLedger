@@ -3,7 +3,6 @@ package com.example.personalledger
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.roundToLong
 
 /**
  * [LedgerEntryEntity] 与界面模型 [LedgerItem] 之间的双向转换。
@@ -17,9 +16,9 @@ object LedgerItemMappers {
 
     fun entityToItem(entity: LedgerEntryEntity): LedgerItem = LedgerItem(
         id = entity.id,
-        amount = String.format(Locale.getDefault(), "%.2f", entity.amountCents / 100.0),
+        amountCents = entity.amountCents,
         note = entity.note,
-        time = formatMillis(entity.timeMillis),
+        timeMillis = entity.timeMillis,
         isExpense = entity.isExpense,
         categoryName = entity.categoryName,
         categoryIconRes = entity.categoryIconRes
@@ -27,9 +26,9 @@ object LedgerItemMappers {
 
     fun itemToEntity(item: LedgerItem): LedgerEntryEntity = LedgerEntryEntity(
         id = item.id,
-        amountCents = (item.amount.toDoubleOrNull() ?: 0.0).let { (it * 100).roundToLong() },
+        amountCents = item.amountCents,
         note = item.note,
-        timeMillis = parseTimeMillis(item.time),
+        timeMillis = item.timeMillis,
         isExpense = item.isExpense,
         categoryName = item.categoryName,
         categoryIconRes = item.categoryIconRes

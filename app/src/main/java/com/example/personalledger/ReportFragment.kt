@@ -21,6 +21,7 @@ import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import com.example.personalledger.databinding.FragmentReportBinding
 import com.github.mikephil.charting.components.Legend
@@ -43,6 +44,7 @@ class ReportFragment : Fragment() {
     private val binding get() = _binding!!
 
     private val viewModel: MainViewModel by activityViewModels()
+    private val reportViewModel: ReportViewModel by viewModels()
     private val chartTypeface: Typeface? by lazy {
         ResourcesCompat.getFont(requireContext(), R.font.app_ui_font)
             ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
@@ -109,7 +111,7 @@ class ReportFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         initCharts()
 
-        viewModel.reportData.observe(viewLifecycleOwner) { report ->
+        reportViewModel.reportData.observe(viewLifecycleOwner) { report ->
             updatePieChart(report.pieEntries)
             updateBarChart(report.weeklyBar)
         }
@@ -135,24 +137,18 @@ class ReportFragment : Fragment() {
     }
 
     fun exportData() {
-        val fileName = "轻账备份_${
-            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        }.json"
-        createDocumentLauncher.launch(fileName)
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        createDocumentLauncher.launch(getString(R.string.backup_file_name, stamp))
     }
 
     fun exportCsv() {
-        val fileName = "轻账记录_${
-            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        }.csv"
-        createCsvLauncher.launch(fileName)
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        createCsvLauncher.launch(getString(R.string.csv_file_name, stamp))
     }
 
     fun exportPdf() {
-        val fileName = "轻账报表_${
-            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        }.pdf"
-        createPdfLauncher.launch(fileName)
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        createPdfLauncher.launch(getString(R.string.pdf_file_name, stamp))
     }
 
     private fun saveCsvTo(uri: Uri) {
@@ -163,7 +159,7 @@ class ReportFragment : Fragment() {
                 }
                 Toast.makeText(requireContext(), getString(R.string.export_csv_success), Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "CSV导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), getString(R.string.csv_export_failed, e.message), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -198,7 +194,7 @@ class ReportFragment : Fragment() {
                 isFakeBoldText = true
             }
 
-            val summaryText = viewModel.reportData.value?.summary ?: ""
+            val summaryText = reportViewModel.reportData.value?.summary ?: ""
             val pieBitmap = binding.pieChartExpense.chartBitmap
             val barBitmap = binding.barChartWeekly.chartBitmap
 
@@ -207,7 +203,7 @@ class ReportFragment : Fragment() {
             var canvas: Canvas = pageInfo.canvas
             var y = margin
 
-            canvas.drawText("轻账 · 数据报表", margin.toFloat(), y.toFloat(), titlePaint)
+            canvas.drawText(getString(R.string.pdf_report_title), margin.toFloat(), y.toFloat(), titlePaint)
             y += 32
 
             for (line in summaryText.lines()) {
@@ -271,7 +267,7 @@ class ReportFragment : Fragment() {
                 }
                 Toast.makeText(requireContext(), getString(R.string.export_success), Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), getString(R.string.backup_export_failed, e.message), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -305,7 +301,7 @@ class ReportFragment : Fragment() {
                 .setNegativeButton(android.R.string.cancel, null)
                 .show()
         } catch (e: Exception) {
-            Toast.makeText(requireContext(), "导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), getString(R.string.backup_import_failed, e.message), Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -22,8 +22,9 @@ Kotlin · AndroidX (Activity / Fragment / Lifecycle ViewModel / LiveData) · Roo
 单模块工程，入口模块为 `app`，遵循 ViewModel + Repository 分层：
 
 - `MainActivity`：主导航容器，通过底部导航在「记账（HomeFragment）」与「报表（ReportFragment）」间切换。
-- `MainViewModel`（`AndroidViewModel`）：统一管理数据与状态，通过 LiveData 驱动界面刷新；后台线程完成统计与图表聚合。
-- `LedgerRepository`：账本条目走 Room，预算与自定义分类走 DataStore，并负责旧版本 DataStore JSON 数据一次性迁移到 Room。
+- `MainViewModel`（`AndroidViewModel`）：统一管理账本数据、首页统计、筛选状态、分类与自动记账开关，通过 LiveData 驱动界面刷新。
+- `ReportViewModel`（`AndroidViewModel`）：报表页专用，负责图表（饼图/柱状图）聚合与报表摘要，与主页逻辑解耦。
+- `LedgerRepository`：账本条目走 Room，预算与自定义分类走 DataStore，并负责旧版本 DataStore JSON 数据一次性迁移到 Room；筛选已下推到 Room `@Query`。
 - 数据持久化：
   - **Room**：`ledger_entries` 表，金额以“分”（`Long`）存储避免浮点误差，时间以 epoch 毫秒存储。
   - **DataStore Preferences**：保存月预算与自定义分类。

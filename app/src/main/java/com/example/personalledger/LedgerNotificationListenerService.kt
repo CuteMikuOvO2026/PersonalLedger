@@ -9,7 +9,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.util.LinkedHashMap
-import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToLong
 
@@ -72,9 +71,9 @@ class LedgerNotificationListenerService : NotificationListenerService() {
 
             val item = LedgerItem(
                 id = UUID.randomUUID().toString(),
-                amount = String.format(Locale.US, "%.2f", parsed.amountCents / 100.0),
+                amountCents = parsed.amountCents,
                 note = parsed.note,
-                time = LedgerItemMappers.formatMillis(now),
+                timeMillis = now,
                 isExpense = parsed.isExpense,
                 categoryName = parsed.categoryName,
                 categoryIconRes = parsed.iconRes

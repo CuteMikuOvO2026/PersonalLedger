@@ -14,11 +14,11 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.switchmaterial.SwitchMaterial
 import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
 import androidx.core.view.MenuProvider
@@ -415,7 +415,7 @@ class HomeFragment : Fragment() {
             })
         }
 
-        val switch = Switch(requireContext()).apply {
+        val switch = SwitchMaterial(requireContext()).apply {
             text = getString(R.string.auto_bookkeeping_switch)
             isChecked = viewModel.autoBookkeepingEnabled.value ?: false
         }

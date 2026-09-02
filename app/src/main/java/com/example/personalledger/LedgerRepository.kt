@@ -3,6 +3,7 @@ package com.example.personalledger
 import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,7 +22,9 @@ class LedgerRepository(context: Context) {
     private val db = AppDatabase.get(context)
     private val dao = db.ledgerEntryDao()
     private val dataStoreManager = DataStoreManager(context)
-    private val gson = Gson()
+    private val gson: Gson = GsonBuilder()
+        .registerTypeAdapter(LedgerItem::class.java, LedgerItemJsonAdapter())
+        .create()
 
     private val migrateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -80,6 +83,22 @@ class LedgerRepository(context: Context) {
     suspend fun existsRecentEntry(amountCents: Long, isExpense: Boolean, sinceMillis: Long): Boolean =
         dao.countRecent(amountCents, isExpense, sinceMillis) > 0
 
+    fun queryFiltered(
+        typeAll: Boolean,
+        typeExpense: Boolean,
+        typeIncome: Boolean,
+        category: String?,
+        search: String,
+        minCents: Long?,
+        maxCents: Long?,
+        dateFrom: Long?,
+        dateTo: Long?
+    ): Flow<List<LedgerItem>> =
+        dao.queryFiltered(
+            typeAll, typeExpense, typeIncome, category,
+            search, minCents, maxCents, dateFrom, dateTo
+        ).map { list -> list.map { LedgerItemMappers.entityToItem(it) } }
+
     suspend fun resetAll() {
         dao.deleteAll()
         dataStoreManager.clearAllData()
@@ -111,8 +130,7 @@ class LedgerRepository(context: Context) {
             val fixedItems = backup.items.map {
                 if (it.id.isEmpty()) it.copy(id = UUID.randomUUID().toString()) else it
             }
-            dao.deleteAll()
-            dao.upsertAll(fixedItems.map { LedgerItemMappers.itemToEntity(it) })
+            dao.replaceAll(fixedItems.map { LedgerItemMappers.itemToEntity(it) })
             dataStoreManager.saveBudget(backup.budget)
             dataStoreManager.saveCustomCategories(backup.customCategories)
             true
@@ -122,7 +140,7 @@ class LedgerRepository(context: Context) {
         }
     }
 
-    private fun amountToDouble(item: LedgerItem): Double = item.amount.toDoubleOrNull() ?: 0.0
+    private fun amountToDouble(item: LedgerItem): Double = item.amountCents / 100.0
 
     // 供导出 CSV 使用
     suspend fun getCsvString(): String {
