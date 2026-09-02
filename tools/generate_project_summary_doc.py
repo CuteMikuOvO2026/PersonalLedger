@@ -119,7 +119,7 @@ doc.add_paragraph()
 
 add_heading(doc, "1. 项目概述", 1)
 add_body(doc, "PersonalLedger 是一个基于 Android 原生技术栈开发的个人记账应用，面向日常收支记录、预算控制和消费复盘场景。项目采用单模块结构，以 Activity + Fragment 构建界面，以 ViewModel 管理状态，并以 DataStore 作为本地持久化方案。")
-add_body(doc, "从当前实现来看，应用已经覆盖账号登录、收支录入、分类管理、预算展示、图表报表与 CSV 导出等完整闭环，具备课程设计、毕业设计或小型独立应用展示的较强完整度。")
+add_body(doc, "从当前实现来看，应用已经覆盖收支录入、分类管理、预算展示、图表报表与 CSV / PDF / JSON 数据导出等完整闭环，具备课程设计、毕业设计或小型独立应用展示的较强完整度。")
 
 add_heading(doc, "2. 技术栈与工程结构", 1)
 add_table(
@@ -131,7 +131,7 @@ add_table(
         ["构建工具", "Gradle Kotlin DSL"],
         ["最低/目标 SDK", "minSdk 24 / targetSdk 36"],
         ["架构核心", "Activity + Fragment + AndroidViewModel"],
-        ["状态与持久化", "Jetpack DataStore Preferences + Gson JSON 序列化"],
+        ["状态与持久化", "Room（账本条目）+ Jetpack DataStore Preferences（预算、自定义分类）"],
         ["图表能力", "MPAndroidChart"],
         ["界面能力", "ViewBinding + Material 3 风格组件"],
     ],
@@ -145,40 +145,39 @@ add_table(
     doc,
     ["模块", "职责说明", "关键文件"],
     [
-        ["登录注册", "用户注册、登录状态判断、自动跳转主页、退出登录", "AuthActivity.kt / DataStoreManager.kt"],
         ["主页记账", "展示当日收入、当日支出、本月结余与近期账单", "HomeFragment.kt"],
         ["账单录入", "底部弹窗录入金额、分类、备注，并支持编辑已有记录", "AddEntryBottomSheetDialogFragment.kt"],
-        ["账单列表", "展示记录、左滑操作、编辑与删除", "LedgerAdapter.kt / item_ledger.xml"],
-        ["预算管理", "设置月预算并按当月支出计算预算进度", "HomeFragment.kt / MainViewModel.kt"],
+        ["账单列表", "展示记录、滑动展开编辑/删除、删除撤销", "LedgerAdapter.kt / item_ledger.xml"],
+        ["搜索与筛选", "按备注搜索，并按类型/分类/金额区间/日期区间筛选", "MainViewModel.kt / HomeFragment.kt"],
+        ["预算管理", "设置月预算并按当月支出计算预算进度，进度条颜色预警", "HomeFragment.kt / MainViewModel.kt"],
         ["报表分析", "饼图、柱状图、折线图呈现消费结构与变化趋势", "ReportFragment.kt"],
-        ["数据导出", "将账单导出为 CSV 并支持系统分享", "ReportFragment.kt"],
+        ["数据导出", "导出 CSV / PDF，并支持 JSON 备份导出与导入恢复", "ReportFragment.kt"],
     ],
 )
 
 add_heading(doc, "4. 核心业务流程", 1)
-add_bullet(doc, "首次启动进入认证页。若本地已存在登录状态，则直接跳转主页。")
-add_bullet(doc, "用户在底部弹窗中选择收入或支出类型，输入金额、备注并选择分类后保存。")
+add_bullet(doc, "应用启动后直接进入记账主页，通过底部导航在「记账」与「报表」两个核心页面间切换。")
+add_bullet(doc, "用户在底部弹窗中选择收入或支出类型，输入金额、分类与备注后保存，既支持新增也支持编辑。")
 add_bullet(doc, "ViewModel 根据收支方向同步更新总额、历史列表、当日统计、本月支出和预算进度。")
-add_bullet(doc, "主页负责展示概览信息与最近记录，报表页负责聚合分析结果并生成图表。")
-add_bullet(doc, "报表页还支持导出 CSV，用于二次整理或分享账本数据。")
+add_bullet(doc, "主页负责展示概览信息与最近记录，并支持搜索与多条件筛选；报表页负责聚合分析结果并生成图表。")
+add_bullet(doc, "报表页与主页菜单支持导出 CSV / PDF 以及 JSON 备份导出和导入恢复。")
 
 add_heading(doc, "5. 数据模型与持久化设计", 1)
-add_body(doc, "项目当前并未引入 SQLite 或 Room，而是通过 DataStore Preferences 保存账户、预算和账单列表。账单列表使用 Gson 序列化为 JSON 字符串，结构轻量，实现成本低，适合中小规模离线数据场景。")
+add_body(doc, "项目采用混合持久化：账本条目使用 Room（`ledger_entries` 表，金额以“分”的 `Long` 存储、时间以 epoch 毫秒存储），月预算与自定义分类使用 DataStore Preferences。整体轻量、可靠，且能避免浮点误差。")
 add_table(
     doc,
     ["数据项", "保存方式", "说明"],
     [
-        ["用户名/密码/登录态", "DataStore Preferences", "用于本地认证流程"],
-        ["总金额 amount", "Double", "根据收支录入动态累加或回退"],
-        ["月预算 budget", "Double", "用于预算进度计算"],
-        ["历史账单 historyList", "JSON 字符串", "序列化 `List<LedgerItem>` 保存"],
+        ["账本条目", "Room `ledger_entries`", "金额以“分”存储，时间以 epoch 毫秒存储"],
+        ["月预算 budget", "DataStore Preferences", "用于预算进度计算"],
+        ["自定义分类", "DataStore Preferences", "以 JSON 保存 `List<CategoryItem>`"],
     ],
 )
-add_body(doc, "仓库还额外提供了一份 `Database_Table_Design.md`，将当前实现抽象为关系型数据库模型，包含用户表、账单表、分类表、预算表、统计表和系统设置表。这说明项目作者已经考虑到未来从轻量本地存储迁移到规范数据库设计的可扩展路径。")
+add_body(doc, "仓库还提供了一份 `Database_Table_Design.md`，在 Room 实际表结构基础上，整理了用户表、分类表、预算表、统计表和操作日志表等关系型扩展设计，说明项目作者已经考虑到未来从轻量本地存储迁移到更规范化数据库设计的可扩展路径。")
 
 add_heading(doc, "6. 架构特点与实现亮点", 1)
 add_bullet(doc, "使用共享 `MainViewModel` 统一管理首页和报表页数据，降低了跨页面通信复杂度。")
-add_bullet(doc, "预算进度通过 `MediatorLiveData` 同时监听账单列表和预算值，逻辑表达清晰。")
+add_bullet(doc, "预算进度通过组合监听账单列表与预算值计算，逻辑表达清晰，并在后台线程执行避免卡顿。")
 add_bullet(doc, "报表页基于 MPAndroidChart 实现饼图、近 7 日柱状图和余额折线图，数据可视化完整。")
 add_bullet(doc, "账单列表支持滑动展开编辑/删除操作，交互体验比基础列表更丰富。")
 add_bullet(doc, "CSV 导出结合 Android 系统文档创建与分享流程，具备实际可用性。")
@@ -188,9 +187,9 @@ add_table(
     doc,
     ["方面", "当前情况", "建议方向"],
     [
-        ["账户安全", "用户名和密码明文保存在 DataStore", "引入加密存储或接入正式认证体系"],
+        ["账户安全", "无账号体系，数据完全保存在本地", "若未来接入账号，需引入加密存储或正式认证体系"],
         ["多用户能力", "当前更接近单机单用户模式", "按用户隔离账本数据并扩展账号体系"],
-        ["数据规模", "账单列表整体 JSON 存储", "迁移到 Room/SQLite 以支持检索、分页和更大规模数据"],
+        ["数据规模", "已迁移到 Room，但缺分页与复杂查询", "补充分页、字段索引与更复杂的聚合查询"],
         ["统计维度", "主要覆盖日、月与近 7 日", "增加按分类、按月、按区间筛选和对比分析"],
         ["测试保障", "仓库仅保留模板测试", "补充 ViewModel、DataStore 与关键交互的自动化测试"],
         ["编码一致性", "部分中文资源存在编码异常痕迹", "统一 UTF-8 编码并清理乱码文本"],

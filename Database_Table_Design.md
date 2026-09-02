@@ -1,6 +1,8 @@
-﻿# PersonalLedger 数据库表设计（Markdown版）
+# PersonalLedger 数据库表设计（Markdown版）
 
-说明：当前项目实际使用 `DataStore`，本文档为按关系型数据库规范整理出的等价表结构设计，版式参考你提供的示例。
+说明：
+- 当前版本账本条目已迁移到 **Room**，实际表为 `ledger_entries`（见「表 3-2」），金额以“分”（`Long`）存储、时间以 epoch 毫秒存储；月预算与自定义分类仍由 **DataStore Preferences** 保存（即概念上等价于 `app_settings` 的轻量版本）。
+- 本文档其余各表（`users`、`categories`、`budgets`、`daily_stats`、`monthly_stats`、`operation_logs`）为按关系型数据库规范整理的**扩展设计**，用于说明后续从轻量本地存储升级到规范化数据层时的落地方案。
 
 ## 表 3-1 用户表（`users`）
 
@@ -13,18 +15,17 @@
 | 5 | created_at | timestamp | 非空，默认当前时间 | 创建时间 |
 | 6 | updated_at | timestamp | 非空，默认当前时间 | 更新时间 |
 
-## 表 3-2 账本条目表（`ledger_entries`）
+## 表 3-2 账本条目表（`ledger_entries`，当前 Room 实体 `LedgerEntryEntity`）
 
 | 序号 | 字段名称 | 数据类型 | 字段约束 | 字段内容 |
 |---|---|---|---|---|
-| 1 | id | bigint | 主键，自增 | 条目ID |
-| 2 | user_id | bigint | 非空，外键->users.id | 所属用户 |
-| 3 | amount | decimal(12,2) | 非空 | 金额 |
-| 4 | note | varchar(255) | 可空 | 备注 |
-| 5 | occurred_at | datetime | 非空 | 发生时间 |
-| 6 | is_expense | tinyint(1) | 非空 | 收支类型（1支出/0收入） |
-| 7 | category_id | bigint | 可空，外键->categories.id | 分类ID |
-| 8 | created_at | timestamp | 非空，默认当前时间 | 创建时间 |
+| 1 | id | text | 主键（UUID） | 条目ID |
+| 2 | amount_cents | bigint | 非空 | 金额（单位：分，避免浮点误差） |
+| 3 | note | text | 可空 | 备注 |
+| 4 | time_millis | bigint | 非空 | 发生时间（epoch 毫秒） |
+| 5 | is_expense | integer | 非空 | 收支类型（1支出/0收入） |
+| 6 | category_name | text | 非空 | 分类名称 |
+| 7 | category_icon_res | integer | 非空 | 分类图标资源 ID |
 
 ## 表 3-3 分类表（`categories`）
 

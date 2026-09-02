@@ -1,19 +1,28 @@
+# Android / IDE
 *.iml
 .gradle
+.gradle_cache
+/.idea
+/.kotlin
 /local.properties
-.DS_Store
-/build
 /captures
 .externalNativeBuild
 .cxx
-local.properties
-/.idea
-/.kotlin
+
+# Build outputs
+/build
 /app/release
+
+# Generated / scratch dirs
 /output
 /qa_docx_render
 /qa_table_design
 /scratch
 /tmp_*
+
+# Artifacts
 *.apk
 *.dm
+
+# OS
+.DS_Store
