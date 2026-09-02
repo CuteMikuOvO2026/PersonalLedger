@@ -27,10 +27,13 @@ import com.github.mikephil.charting.components.Legend
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.BarData
 import com.github.mikephil.charting.data.BarDataSet
+import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
+import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.github.mikephil.charting.formatter.ValueFormatter
 import java.text.SimpleDateFormat
@@ -109,8 +112,11 @@ class ReportFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         initCharts()
 
-        viewModel.amount.observe(viewLifecycleOwner) { updateCharts() }
-        viewModel.historyList.observe(viewLifecycleOwner) { updateCharts() }
+        viewModel.reportData.observe(viewLifecycleOwner) { report ->
+            updatePieChart(report.pieEntries)
+            updateBarChart(report.weeklyBar)
+            updateLineChart(report.balanceEntries)
+        }
 
         setupMenuProvider()
     }
@@ -154,14 +160,15 @@ class ReportFragment : Fragment() {
     }
 
     private fun saveCsvTo(uri: Uri) {
-        try {
-            val csv = viewModel.getCsvString()
-            requireContext().contentResolver.openOutputStream(uri)?.use { stream ->
-                stream.write(csv.toByteArray(Charsets.UTF_8))
+        viewModel.getCsvString { csv ->
+            try {
+                requireContext().contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(csv.toByteArray(Charsets.UTF_8))
+                }
+                Toast.makeText(requireContext(), getString(R.string.export_csv_success), Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "CSV导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-            Toast.makeText(requireContext(), getString(R.string.export_csv_success), Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(requireContext(), "CSV导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -195,7 +202,7 @@ class ReportFragment : Fragment() {
                 isFakeBoldText = true
             }
 
-            val summaryText = viewModel.getReportSummary()
+            val summaryText = viewModel.reportData.value?.summary ?: ""
             val pieBitmap = binding.pieChartExpense.chartBitmap
             val barBitmap = binding.barChartWeekly.chartBitmap
             val lineBitmap = binding.lineChartBalance.chartBitmap
@@ -332,7 +339,6 @@ class ReportFragment : Fragment() {
         initPieChart()
         initBarChart()
         initLineChart()
-        updateCharts()
     }
 
     private fun initPieChart() {
@@ -447,14 +453,7 @@ class ReportFragment : Fragment() {
         }
     }
 
-    private fun updateCharts() {
-        updatePieChart()
-        updateBarChart()
-        updateLineChart()
-    }
-
-    private fun updatePieChart() {
-        val entries = viewModel.getExpenseCategoryPieEntries()
+    private fun updatePieChart(entries: List<PieEntry>) {
         if (entries.isEmpty()) {
             binding.pieChartExpense.clear()
             binding.pieChartExpense.invalidate()
@@ -476,8 +475,8 @@ class ReportFragment : Fragment() {
         binding.pieChartExpense.invalidate()
     }
 
-    private fun updateBarChart() {
-        val (entries, labels) = viewModel.getWeeklyExpenseBarEntries()
+    private fun updateBarChart(weeklyBar: Pair<List<BarEntry>, List<String>>) {
+        val (entries, labels) = weeklyBar
         if (entries.isEmpty()) {
             binding.barChartWeekly.clear()
             binding.barChartWeekly.invalidate()
@@ -499,8 +498,7 @@ class ReportFragment : Fragment() {
         binding.barChartWeekly.invalidate()
     }
 
-    private fun updateLineChart() {
-        val entries = viewModel.getBalanceLineEntries()
+    private fun updateLineChart(entries: List<Entry>) {
         if (entries.isEmpty()) {
             binding.lineChartBalance.clear()
             binding.lineChartBalance.invalidate()

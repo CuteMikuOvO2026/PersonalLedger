@@ -26,33 +26,15 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.personalledger.databinding.FragmentHomeBinding
 import com.google.android.material.datepicker.MaterialDatePicker
-import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Locale
-import java.util.TimeZone
 import kotlin.math.abs
 
 class HomeFragment : Fragment() {
-
-    private sealed class LedgerFilter {
-        data object All : LedgerFilter()
-        data object Expense : LedgerFilter()
-        data object Income : LedgerFilter()
-        data class Category(val name: String) : LedgerFilter()
-    }
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
 
     private val viewModel: MainViewModel by activityViewModels()
-    private var currentFilter: LedgerFilter = LedgerFilter.All
-    private var searchQuery: String = ""
-    private var minAmount: Double? = null
-    private var maxAmount: Double? = null
-    private var dateFrom: Long? = null
-    private var dateTo: Long? = null
-
-
 
     private val ledgerAdapter: LedgerAdapter = LedgerAdapter(
         onEditClick = { item: LedgerItem ->
@@ -94,12 +76,10 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupObservers() {
-        viewModel.historyList.observe(viewLifecycleOwner) { list ->
-            val filteredList = filterLedgerList(list)
-            ledgerAdapter.submitList(filteredList)
-            binding.layoutEmpty.visibility = if (filteredList.isEmpty()) View.VISIBLE else View.GONE
-            binding.recyclerView.visibility = if (filteredList.isEmpty()) View.GONE else View.VISIBLE
-            updateBoardStats(list)
+        viewModel.filteredHistory.observe(viewLifecycleOwner) { list ->
+            ledgerAdapter.submitList(list)
+            binding.layoutEmpty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
+            binding.recyclerView.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
         }
 
         viewModel.todayIncome.observe(viewLifecycleOwner) { income ->
@@ -138,94 +118,37 @@ class HomeFragment : Fragment() {
             )
         }
 
+        viewModel.boardStats.observe(viewLifecycleOwner) { stats ->
+            updateBoard(stats)
+        }
+
         viewModel.importEvent.observe(viewLifecycleOwner) {
-            currentFilter = LedgerFilter.All
-            searchQuery = ""
-            minAmount = null
-            maxAmount = null
-            dateFrom = null
-            dateTo = null
+            viewModel.clearFilters()
             updateAmountFilterTint()
             updateDateFilterTint()
-            applyCurrentFilters()
         }
+    }
+
+    private fun updateBoard(stats: HomeStats) {
+        val amountColor = if (stats.monthPositive) {
+            binding.textBoardTitle.text = getString(R.string.home_balance_title)
+            binding.textAmountSign.text = "+"
+            ContextCompat.getColor(requireContext(), R.color.income)
+        } else {
+            binding.textBoardTitle.text = getString(R.string.home_overspend_title)
+            binding.textAmountSign.text = "-"
+            ContextCompat.getColor(requireContext(), R.color.expense)
+        }
+        binding.textAmountSign.setTextColor(amountColor)
+        binding.textAmount.setTextColor(amountColor)
+        binding.textAmountCurrency.setTextColor(amountColor)
+        binding.textAmount.text = stats.monthBalance
     }
 
     private fun setupFilterClick() {
-        binding.textViewAll.setOnClickListener {
-            showFilterDialog()
-        }
-        binding.textAmountFilter.setOnClickListener {
-            showAmountFilterDialog()
-        }
-        binding.textDateFilter.setOnClickListener {
-            showDateFilterDialog()
-        }
-    }
-
-    private fun filterLedgerList(list: List<LedgerItem>): List<LedgerItem> {
-        val typeFiltered = when (val filter = currentFilter) {
-            LedgerFilter.All -> list
-            LedgerFilter.Expense -> list.filter { it.isExpense }
-            LedgerFilter.Income -> list.filter { !it.isExpense }
-            is LedgerFilter.Category -> list.filter { it.categoryName == filter.name }
-        }
-        val textFiltered = if (searchQuery.isBlank()) typeFiltered
-            else typeFiltered.filter { it.note.contains(searchQuery, ignoreCase = true) }
-        val amountFiltered = if (minAmount == null && maxAmount == null) textFiltered
-            else textFiltered.filter { item ->
-                val amt = item.amount.toDoubleOrNull() ?: 0.0
-                (minAmount == null || amt >= minAmount!!) && (maxAmount == null || amt <= maxAmount!!)
-            }
-        return if (dateFrom == null && dateTo == null) amountFiltered
-            else amountFiltered.filter { item -> isItemInDateRange(item) }
-    }
-
-    private fun isItemInDateRange(item: LedgerItem): Boolean {
-        val itemDate = parseItemDate(item.time) ?: return false
-        if (dateFrom != null && itemDate < dateFrom!!) return false
-        if (dateTo != null && itemDate > dateTo!!) return false
-        return true
-    }
-
-    private fun parseItemDate(time: String): Long? {
-        return try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            sdf.timeZone = TimeZone.getDefault()
-            val dateStr = time.take(10)
-            val date = sdf.parse(dateStr)
-            date?.let {
-                val cal = Calendar.getInstance()
-                cal.time = it
-                cal.set(Calendar.HOUR_OF_DAY, 0)
-                cal.set(Calendar.MINUTE, 0)
-                cal.set(Calendar.SECOND, 0)
-                cal.set(Calendar.MILLISECOND, 0)
-                cal.timeInMillis
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun showFilterDialog() {
-        val filterOptions = buildFilterOptions()
-        val checkedItem = getCheckedFilterIndex(filterOptions)
-
-        AlertDialog.Builder(requireContext())
-            .setTitle("筛选类型")
-            .setSingleChoiceItems(filterOptions.toTypedArray(), checkedItem) { dialog, which ->
-                currentFilter = when (which) {
-                    1 -> LedgerFilter.Expense
-                    2 -> LedgerFilter.Income
-                    in 3 until filterOptions.size -> LedgerFilter.Category(filterOptions[which])
-                    else -> LedgerFilter.All
-                }
-                applyCurrentFilters()
-                dialog.dismiss()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        binding.textViewAll.setOnClickListener { showFilterDialog() }
+        binding.textAmountFilter.setOnClickListener { showAmountFilterDialog() }
+        binding.textDateFilter.setOnClickListener { showDateFilterDialog() }
     }
 
     private fun buildFilterOptions(): List<String> {
@@ -240,56 +163,113 @@ class HomeFragment : Fragment() {
         }
     }
 
-    private fun getCheckedFilterIndex(filterOptions: List<String>): Int {
-        return when (val filter = currentFilter) {
+    private fun showFilterDialog() {
+        val filterOptions = buildFilterOptions()
+        val checkedItem = when (val filter = viewModel.currentFilter()) {
             LedgerFilter.All -> 0
             LedgerFilter.Expense -> 1
             LedgerFilter.Income -> 2
             is LedgerFilter.Category -> filterOptions.indexOf(filter.name).takeIf { it >= 0 } ?: 0
         }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("筛选类型")
+            .setSingleChoiceItems(filterOptions.toTypedArray(), checkedItem) { dialog, which ->
+                val newFilter = when (which) {
+                    1 -> LedgerFilter.Expense
+                    2 -> LedgerFilter.Income
+                    in 3 until filterOptions.size -> LedgerFilter.Category(filterOptions[which])
+                    else -> LedgerFilter.All
+                }
+                viewModel.setFilter(newFilter)
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
-    private fun applyCurrentFilters() {
-        viewModel.historyList.value?.let { list ->
-            ledgerAdapter.submitList(filterLedgerList(list))
-            updateEmptyState()
+    private fun showAmountFilterDialog() {
+        val context = requireContext()
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(48, 32, 48, 0)
         }
-    }
+        val (currentMin, currentMax) = viewModel.currentAmountRange()
 
-    private fun updateEmptyState() {
-        val currentList = viewModel.historyList.value.orEmpty()
-        val filteredList = filterLedgerList(currentList)
-        binding.layoutEmpty.visibility = if (filteredList.isEmpty()) View.VISIBLE else View.GONE
-        binding.recyclerView.visibility = if (filteredList.isEmpty()) View.GONE else View.VISIBLE
-    }
-
-    private fun updateBoardStats(list: List<LedgerItem>) {
-        val monthStr = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Calendar.getInstance().time)
-
-        var monthIncome = 0.0
-        var monthExpense = 0.0
-
-        list.forEach { item ->
-            if (!item.time.startsWith(monthStr)) return@forEach
-            val amount = item.amount.toDoubleOrNull() ?: 0.0
-            if (item.isExpense) monthExpense += amount else monthIncome += amount
+        val editMin = EditText(context).apply {
+            hint = getString(R.string.amount_filter_hint_min)
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            if (currentMin != null) setText(String.format(Locale.getDefault(), "%.2f", currentMin))
         }
+        val editMax = EditText(context).apply {
+            hint = getString(R.string.amount_filter_hint_max)
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = 24
+            }
+            if (currentMax != null) setText(String.format(Locale.getDefault(), "%.2f", currentMax))
+        }
+        layout.addView(editMin)
+        layout.addView(editMax)
 
-        val balance = monthIncome - monthExpense
-        val amountColor = if (balance >= 0) {
-            binding.textBoardTitle.text = getString(R.string.home_balance_title)
-            binding.textAmountSign.text = "+"
-            ContextCompat.getColor(requireContext(), R.color.income)
+        AlertDialog.Builder(context)
+            .setTitle(R.string.amount_filter)
+            .setView(layout)
+            .setPositiveButton(R.string.confirm) { _, _ ->
+                viewModel.setAmountRange(
+                    editMin.text.toString().toDoubleOrNull(),
+                    editMax.text.toString().toDoubleOrNull()
+                )
+                updateAmountFilterTint()
+            }
+            .setNeutralButton(R.string.amount_filter_clear) { _, _ ->
+                viewModel.setAmountRange(null, null)
+                updateAmountFilterTint()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun updateAmountFilterTint() {
+        val (min, max) = viewModel.currentAmountRange()
+        val active = min != null || max != null
+        val color = if (active) {
+            ContextCompat.getColor(requireContext(), R.color.md_theme_tertiary)
         } else {
-            binding.textBoardTitle.text = getString(R.string.home_overspend_title)
-            binding.textAmountSign.text = "-"
-            ContextCompat.getColor(requireContext(), R.color.expense)
+            ContextCompat.getColor(requireContext(), R.color.text_secondary)
+        }
+        binding.textAmountFilter.setTextColor(color)
+    }
+
+    private fun showDateFilterDialog() {
+        val (from, to) = viewModel.currentDateRange()
+        val rangePicker = MaterialDatePicker.Builder.dateRangePicker()
+            .setTitleText(getString(R.string.date_filter))
+            .apply {
+                if (from != null && to != null) {
+                    setSelection(androidx.core.util.Pair(from, to))
+                }
+            }
+            .build()
+
+        rangePicker.addOnPositiveButtonClickListener { selection ->
+            viewModel.setDateRange(selection.first, selection.second)
+            updateDateFilterTint()
         }
 
-        binding.textAmountSign.setTextColor(amountColor)
-        binding.textAmount.setTextColor(amountColor)
-        binding.textAmountCurrency.setTextColor(amountColor)
-        binding.textAmount.text = String.format(Locale.getDefault(), "%.2f", abs(balance))
+        rangePicker.show(childFragmentManager, "date_range_picker")
+    }
+
+    private fun updateDateFilterTint() {
+        val (from, to) = viewModel.currentDateRange()
+        val active = from != null || to != null
+        val color = if (active) {
+            ContextCompat.getColor(requireContext(), R.color.md_theme_primary)
+        } else {
+            ContextCompat.getColor(requireContext(), R.color.text_secondary)
+        }
+        binding.textDateFilter.setTextColor(color)
     }
 
     private fun updateProgressColor(progress: Float) {
@@ -310,9 +290,7 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupBudgetClick() {
-        binding.layoutBudgetClick.setOnClickListener {
-            showBudgetDialog()
-        }
+        binding.layoutBudgetClick.setOnClickListener { showBudgetDialog() }
     }
 
     private fun showBudgetDialog() {
@@ -342,88 +320,6 @@ class HomeFragment : Fragment() {
             .show()
     }
 
-    private fun showAmountFilterDialog() {
-        val context = requireContext()
-        val layout = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(48, 32, 48, 0)
-        }
-        val editMin = EditText(context).apply {
-            hint = getString(R.string.amount_filter_hint_min)
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            if (minAmount != null) setText(String.format(Locale.getDefault(), "%.2f", minAmount))
-        }
-        val editMax = EditText(context).apply {
-            hint = getString(R.string.amount_filter_hint_max)
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = 24
-            }
-            if (maxAmount != null) setText(String.format(Locale.getDefault(), "%.2f", maxAmount))
-        }
-        layout.addView(editMin)
-        layout.addView(editMax)
-
-        AlertDialog.Builder(context)
-            .setTitle(R.string.amount_filter)
-            .setView(layout)
-            .setPositiveButton(R.string.confirm) { _, _ ->
-                minAmount = editMin.text.toString().toDoubleOrNull()
-                maxAmount = editMax.text.toString().toDoubleOrNull()
-                updateAmountFilterTint()
-                applyCurrentFilters()
-            }
-            .setNeutralButton(R.string.amount_filter_clear) { _, _ ->
-                minAmount = null
-                maxAmount = null
-                updateAmountFilterTint()
-                applyCurrentFilters()
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    private fun updateAmountFilterTint() {
-        val active = minAmount != null || maxAmount != null
-        val color = if (active) {
-            ContextCompat.getColor(requireContext(), R.color.md_theme_tertiary)
-        } else {
-            ContextCompat.getColor(requireContext(), R.color.text_secondary)
-        }
-        binding.textAmountFilter.setTextColor(color)
-    }
-
-    private fun showDateFilterDialog() {
-        val rangePicker = MaterialDatePicker.Builder.dateRangePicker()
-            .setTitleText(getString(R.string.date_filter))
-            .apply {
-                if (dateFrom != null && dateTo != null) {
-                    setSelection(androidx.core.util.Pair(dateFrom!!, dateTo!!))
-                }
-            }
-            .build()
-
-        rangePicker.addOnPositiveButtonClickListener { selection ->
-            dateFrom = selection.first
-            dateTo = selection.second
-            updateDateFilterTint()
-            applyCurrentFilters()
-        }
-
-        rangePicker.show(childFragmentManager, "date_range_picker")
-    }
-
-    private fun updateDateFilterTint() {
-        val active = dateFrom != null || dateTo != null
-        val color = if (active) {
-            ContextCompat.getColor(requireContext(), R.color.md_theme_primary)
-        } else {
-            ContextCompat.getColor(requireContext(), R.color.text_secondary)
-        }
-        binding.textDateFilter.setTextColor(color)
-    }
-
     private fun showDeleteConfirmDialog(item: LedgerItem) {
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.delete_record)
@@ -450,14 +346,12 @@ class HomeFragment : Fragment() {
                 searchView.queryHint = getString(R.string.search_hint)
                 searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
                     override fun onQueryTextSubmit(query: String?): Boolean {
-                        searchQuery = query.orEmpty()
-                        applyCurrentFilters()
+                        viewModel.setSearchQuery(query.orEmpty())
                         return true
                     }
 
                     override fun onQueryTextChange(newText: String?): Boolean {
-                        searchQuery = newText.orEmpty()
-                        applyCurrentFilters()
+                        viewModel.setSearchQuery(newText.orEmpty())
                         return true
                     }
                 })
