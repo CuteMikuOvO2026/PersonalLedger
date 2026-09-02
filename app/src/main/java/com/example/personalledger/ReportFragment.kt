@@ -28,9 +28,6 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.BarData
 import com.github.mikephil.charting.data.BarDataSet
 import com.github.mikephil.charting.data.BarEntry
-import com.github.mikephil.charting.data.Entry
-import com.github.mikephil.charting.data.LineData
-import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
@@ -115,7 +112,6 @@ class ReportFragment : Fragment() {
         viewModel.reportData.observe(viewLifecycleOwner) { report ->
             updatePieChart(report.pieEntries)
             updateBarChart(report.weeklyBar)
-            updateLineChart(report.balanceEntries)
         }
 
         setupMenuProvider()
@@ -205,7 +201,6 @@ class ReportFragment : Fragment() {
             val summaryText = viewModel.reportData.value?.summary ?: ""
             val pieBitmap = binding.pieChartExpense.chartBitmap
             val barBitmap = binding.barChartWeekly.chartBitmap
-            val lineBitmap = binding.lineChartBalance.chartBitmap
 
             // --- Page 1: Summary + Pie Chart ---
             var pageInfo = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create())
@@ -254,27 +249,6 @@ class ReportFragment : Fragment() {
                 val scaledBar = android.graphics.Bitmap.createScaledBitmap(barBitmap, barW, barH, true)
                 canvas.drawBitmap(scaledBar, barLeft.toFloat(), y.toFloat(), null)
                 scaledBar.recycle()
-            }
-            document.finishPage(pageInfo)
-
-            // --- Page 3: Line Chart ---
-            pageInfo = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 3).create())
-            canvas = pageInfo.canvas
-            y = margin
-
-            canvas.drawText(getString(R.string.pdf_title_balance_trend), margin.toFloat(), y.toFloat(), chartTitlePaint)
-            y += 28
-
-            val lineMaxWidth = 500
-            val lineMaxHeight = 600
-            if (lineBitmap.height > 0 && lineBitmap.width > 0) {
-                val lineScale = minOf(lineMaxWidth.toFloat() / lineBitmap.width, lineMaxHeight.toFloat() / lineBitmap.height)
-                val lineW = (lineBitmap.width * lineScale).toInt()
-                val lineH = (lineBitmap.height * lineScale).toInt()
-                val lineLeft = (pageWidth - lineW) / 2
-                val scaledLine = android.graphics.Bitmap.createScaledBitmap(lineBitmap, lineW, lineH, true)
-                canvas.drawBitmap(scaledLine, lineLeft.toFloat(), y.toFloat(), null)
-                scaledLine.recycle()
             }
             document.finishPage(pageInfo)
 
@@ -338,7 +312,6 @@ class ReportFragment : Fragment() {
     private fun initCharts() {
         initPieChart()
         initBarChart()
-        initLineChart()
     }
 
     private fun initPieChart() {
@@ -413,46 +386,6 @@ class ReportFragment : Fragment() {
         }
     }
 
-    private fun initLineChart() {
-        binding.lineChartBalance.apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            description.isEnabled = false
-            setDrawGridBackground(false)
-            setPinchZoom(false)
-            setScaleEnabled(false)
-            setDoubleTapToZoomEnabled(false)
-            extraTopOffset = 8f
-            extraBottomOffset = 8f
-            setNoDataText(getString(R.string.report_empty_balance))
-            setNoDataTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
-
-            xAxis.apply {
-                position = XAxis.XAxisPosition.BOTTOM
-                setDrawGridLines(false)
-                textColor = ContextCompat.getColor(requireContext(), R.color.text_secondary)
-                typeface = chartTypeface
-                axisLineColor = ContextCompat.getColor(requireContext(), R.color.md_theme_outlineVariant)
-            }
-
-            axisLeft.apply {
-                setDrawGridLines(true)
-                gridColor = ContextCompat.getColor(requireContext(), R.color.md_theme_outlineVariant)
-                textColor = ContextCompat.getColor(requireContext(), R.color.text_secondary)
-                typeface = chartTypeface
-                axisLineColor = ContextCompat.getColor(requireContext(), R.color.md_theme_outlineVariant)
-            }
-
-            axisRight.isEnabled = false
-            legend.apply {
-                isEnabled = true
-                textColor = ContextCompat.getColor(requireContext(), R.color.text_secondary)
-                typeface = chartTypeface
-                form = Legend.LegendForm.LINE
-            }
-            animateX(800)
-        }
-    }
-
     private fun updatePieChart(entries: List<PieEntry>) {
         if (entries.isEmpty()) {
             binding.pieChartExpense.clear()
@@ -496,36 +429,6 @@ class ReportFragment : Fragment() {
         }
         binding.barChartWeekly.xAxis.valueFormatter = IndexAxisValueFormatter(labels)
         binding.barChartWeekly.invalidate()
-    }
-
-    private fun updateLineChart(entries: List<Entry>) {
-        if (entries.isEmpty()) {
-            binding.lineChartBalance.clear()
-            binding.lineChartBalance.invalidate()
-            return
-        }
-
-        val accent = ContextCompat.getColor(requireContext(), R.color.md_theme_primary)
-        val fill = Color.parseColor("#335E7CE2")
-
-        val dataSet = LineDataSet(entries, getString(R.string.line_balance_label)).apply {
-            color = accent
-            lineWidth = 2.6f
-            setCircleColor(accent)
-            circleRadius = 3.6f
-            setDrawCircleHole(false)
-            valueTextColor = ContextCompat.getColor(requireContext(), R.color.text_primary)
-            valueTextSize = 9f
-            valueTypeface = chartTypeface
-            mode = LineDataSet.Mode.CUBIC_BEZIER
-            setDrawFilled(true)
-            fillColor = fill
-            fillAlpha = 255
-            highLightColor = ContextCompat.getColor(requireContext(), R.color.md_theme_secondary)
-        }
-
-        binding.lineChartBalance.data = LineData(dataSet)
-        binding.lineChartBalance.invalidate()
     }
 
     private fun setupMenuProvider() {

@@ -8,7 +8,6 @@ import androidx.lifecycle.asLiveData
 import androidx.lifecycle.map
 import androidx.lifecycle.viewModelScope
 import com.github.mikephil.charting.data.BarEntry
-import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.PieEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,7 +56,6 @@ data class HomeStats(
 data class ReportData(
     val pieEntries: List<PieEntry>,
     val weeklyBar: Pair<List<BarEntry>, List<String>>,
-    val balanceEntries: List<Entry>,
     val summary: String,
     val hasData: Boolean
 )
@@ -305,11 +303,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun buildReportData(list: List<LedgerItem>, budgetValue: Double): ReportData {
         val pie = getExpenseCategoryPieEntries(list)
         val weekly = getWeeklyExpenseBarEntries(list)
-        val balance = getBalanceLineEntries(list)
         return ReportData(
             pieEntries = pie,
             weeklyBar = weekly,
-            balanceEntries = balance,
             summary = getReportSummary(list, budgetValue),
             hasData = list.isNotEmpty()
         )
@@ -363,24 +359,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         return Pair(entries, labels)
-    }
-
-    private fun getBalanceLineEntries(list: List<LedgerItem>): List<Entry> {
-        val sortedList = list.sortedBy { item ->
-            try {
-                SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).parse(item.time)?.time ?: 0L
-            } catch (_: Exception) {
-                0L
-            }
-        }
-        var balance = 0.0
-        val entries = mutableListOf<Entry>()
-        sortedList.forEachIndexed { index, item ->
-            val amountValue = parseAmount(item.amount)
-            balance += if (item.isExpense) -amountValue else amountValue
-            entries.add(Entry(index.toFloat(), balance.toFloat()))
-        }
-        return entries
     }
 
     private fun getReportSummary(list: List<LedgerItem>, budgetValue: Double): String {
