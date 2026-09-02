@@ -108,4 +108,17 @@
     <string name="pdf_title_expense_share">支出分类占比</string>
     <string name="pdf_title_weekly_expense">最近 7 天每日支出</string>
     <string name="pdf_title_balance_trend">资产变化趋势</string>
+
+    <!-- 自动记账 -->
+    <string name="auto_bookkeeping">自动记账</string>
+    <string name="auto_bookkeeping_desc">开启后，App 会监听微信、支付宝的支付成功通知，自动解析金额、收支方向与分类，并写入账本。</string>
+    <string name="auto_bookkeeping_permission">通知使用权</string>
+    <string name="auto_bookkeeping_permission_granted">已开启</string>
+    <string name="auto_bookkeeping_permission_denied">未开启，需前往系统设置授权</string>
+    <string name="auto_bookkeeping_grant">去开启通知使用权</string>
+    <string name="auto_bookkeeping_need_permission">请先开启「通知使用权」权限</string>
+    <string name="auto_bookkeeping_switch">自动记录微信 / 支付宝账单</string>
+    <string name="auto_bookkeeping_open_settings">打开系统设置</string>
+    <string name="auto_bookkeeping_enabled_toast">自动记账已开启</string>
+    <string name="auto_bookkeeping_disabled_toast">自动记账已关闭</string>
 </resources>

@@ -3,6 +3,7 @@ package com.example.personalledger
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -30,6 +31,7 @@ class DataStoreManager(private val context: Context) {
         val BUDGET_KEY = doublePreferencesKey("ledger_budget_decimal")
         val LEGACY_BUDGET_KEY = intPreferencesKey("ledger_budget")
         val CUSTOM_CATEGORIES_KEY = stringPreferencesKey("custom_categories")
+        val AUTO_BOOKKEEPING_KEY = booleanPreferencesKey("auto_bookkeeping_enabled")
 
         // 旧的条目历史 key（仅迁移时读取）
         val LEGACY_HISTORY_LIST_KEY = stringPreferencesKey("ledger_history_list")
@@ -64,6 +66,21 @@ class DataStoreManager(private val context: Context) {
         val jsonString = gson.toJson(categories)
         context.dataStore.edit { preferences ->
             preferences[CUSTOM_CATEGORIES_KEY] = jsonString
+        }
+    }
+
+    // ---------- 自动记账开关 ----------
+
+    val autoBookkeepingFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[AUTO_BOOKKEEPING_KEY] ?: false
+    }
+
+    suspend fun isAutoBookkeepingEnabled(): Boolean =
+        context.dataStore.data.first()[AUTO_BOOKKEEPING_KEY] ?: false
+
+    suspend fun setAutoBookkeepingEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[AUTO_BOOKKEEPING_KEY] = enabled
         }
     }
 

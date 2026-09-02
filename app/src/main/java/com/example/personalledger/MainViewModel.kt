@@ -99,6 +99,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             defaultIncomeCategories + custom.filter { it.type == "income" }
         }
 
+    // ---------- 自动记账开关 ----------
+
+    val autoBookkeepingEnabled: LiveData<Boolean> = repository.autoBookkeepingEnabled.asLiveData()
+
+    fun setAutoBookkeepingEnabled(enabled: Boolean) {
+        viewModelScope.launch { repository.setAutoBookkeepingEnabled(enabled) }
+    }
+
     // ---------- 首页统计（后台线程计算，避免主线程扫描、并去重） ----------
 
     private val homeStatsFlow =

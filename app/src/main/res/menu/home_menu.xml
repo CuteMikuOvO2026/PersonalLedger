@@ -7,4 +7,9 @@
         android:title="@string/search"
         app:actionViewClass="androidx.appcompat.widget.SearchView"
         app:showAsAction="always|collapseActionView" />
+    <item
+        android:id="@+id/action_auto_bookkeeping"
+        android:icon="@android:drawable/ic_menu_manage"
+        android:title="@string/auto_bookkeeping"
+        app:showAsAction="ifRoom" />
 </menu>

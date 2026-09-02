@@ -30,4 +30,7 @@ interface LedgerEntryDao {
 
     @Query("DELETE FROM ledger_entries")
     suspend fun deleteAll()
+
+    @Query("SELECT COUNT(*) FROM ledger_entries WHERE amountCents = :amountCents AND isExpense = :isExpense AND timeMillis > :sinceMillis")
+    suspend fun countRecent(amountCents: Long, isExpense: Boolean, sinceMillis: Long): Int
 }

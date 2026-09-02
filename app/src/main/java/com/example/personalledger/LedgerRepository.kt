@@ -32,6 +32,8 @@ class LedgerRepository(context: Context) {
 
     val customCategories: Flow<List<CategoryItem>> = dataStoreManager.customCategoriesFlow
 
+    val autoBookkeepingEnabled: Flow<Boolean> = dataStoreManager.autoBookkeepingFlow
+
     init {
         migrateLegacyDataIfNeeded()
     }
@@ -71,6 +73,12 @@ class LedgerRepository(context: Context) {
         current.removeAll { it.name == category.name && it.type == category.type }
         dataStoreManager.saveCustomCategories(current)
     }
+
+    suspend fun setAutoBookkeepingEnabled(enabled: Boolean) = dataStoreManager.setAutoBookkeepingEnabled(enabled)
+
+    /** 判断在 [sinceMillis] 之后是否已存在同金额、同收支方向的记录，用于自动记账去重。 */
+    suspend fun existsRecentEntry(amountCents: Long, isExpense: Boolean, sinceMillis: Long): Boolean =
+        dao.countRecent(amountCents, isExpense, sinceMillis) > 0
 
     suspend fun resetAll() {
         dao.deleteAll()

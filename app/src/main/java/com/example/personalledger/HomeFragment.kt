@@ -1,7 +1,9 @@
 package com.example.personalledger
 
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType
 import android.view.LayoutInflater
 import android.view.Menu
@@ -9,8 +11,11 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.Switch
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.snackbar.Snackbar
@@ -357,10 +362,97 @@ class HomeFragment : Fragment() {
                 })
             }
 
-            override fun onMenuItemSelected(menuItem: MenuItem): Boolean = false
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                when (menuItem.itemId) {
+                    R.id.action_auto_bookkeeping -> {
+                        showAutoBookkeepingDialog()
+                        true
+                    }
+
+                    else -> false
+                }
         }
 
         requireActivity().addMenuProvider(menuProvider, viewLifecycleOwner, Lifecycle.State.RESUMED)
+    }
+
+    private fun showAutoBookkeepingDialog() {
+        val accessGranted = isNotificationAccessGranted()
+
+        val content = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 20, 48, 8)
+        }
+
+        content.addView(TextView(requireContext()).apply {
+            text = getString(R.string.auto_bookkeeping_desc)
+            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            textSize = 14f
+        })
+
+        content.addView(TextView(requireContext()).apply {
+            text = getString(R.string.auto_bookkeeping_permission) + "：" +
+                getString(
+                    if (accessGranted) R.string.auto_bookkeeping_permission_granted
+                    else R.string.auto_bookkeeping_permission_denied
+                )
+            setTextColor(
+                ContextCompat.getColor(
+                    requireContext(),
+                    if (accessGranted) R.color.income else R.color.expense
+                )
+            )
+            textSize = 14f
+            setPadding(0, 24, 0, 0)
+        })
+
+        if (!accessGranted) {
+            content.addView(Button(requireContext()).apply {
+                text = getString(R.string.auto_bookkeeping_grant)
+                setOnClickListener {
+                    startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                }
+            })
+        }
+
+        val switch = Switch(requireContext()).apply {
+            text = getString(R.string.auto_bookkeeping_switch)
+            isChecked = viewModel.autoBookkeepingEnabled.value ?: false
+        }
+        var suppressing = false
+        switch.setOnCheckedChangeListener { _, checked ->
+            if (suppressing) return@setOnCheckedChangeListener
+            if (!accessGranted) {
+                suppressing = true
+                switch.isChecked = false
+                suppressing = false
+                Toast.makeText(requireContext(), R.string.auto_bookkeeping_need_permission, Toast.LENGTH_SHORT).show()
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            } else {
+                viewModel.setAutoBookkeepingEnabled(checked)
+                Toast.makeText(
+                    requireContext(),
+                    if (checked) R.string.auto_bookkeeping_enabled_toast
+                    else R.string.auto_bookkeeping_disabled_toast,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+        content.addView(switch)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.auto_bookkeeping)
+            .setView(content)
+            .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    private fun isNotificationAccessGranted(): Boolean {
+        val enabled = Settings.Secure.getString(
+            requireContext().contentResolver,
+            "enabled_notification_listeners"
+        ) ?: return false
+        return enabled.contains(requireContext().packageName)
     }
 
     override fun onDestroyView() {
