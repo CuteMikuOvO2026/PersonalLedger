@@ -87,7 +87,7 @@ class LedgerAdapter(
                 ContextCompat.getColor(context, R.color.income)
             }
 
-            binding.icon.setImageResource(item.categoryIconRes)
+            binding.icon.setImageResource(CategoryColors.iconResFor(item.categoryName))
             binding.category.text = item.categoryName
             binding.time.text = item.time
             binding.note.text = item.note.ifEmpty { "-" }

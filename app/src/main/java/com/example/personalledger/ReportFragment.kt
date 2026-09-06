@@ -392,6 +392,12 @@ class ReportFragment : Fragment() {
             setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
                 override fun onValueSelected(e: Entry?, h: Highlight?) {
                     val index = h?.x?.toInt() ?: return
+                    val barEntry = e as? BarEntry ?: return
+                    // 只在当天确实有支出（柱高 > 0）时才响应，避免点击空白/无数据的天也弹窗
+                    if (barEntry.y <= 0f) {
+                        binding.barChartWeekly.highlightValue(null)
+                        return
+                    }
                     val date = lastWeeklyDates.getOrNull(index) ?: return
                     showDayRecords(date)
                 }

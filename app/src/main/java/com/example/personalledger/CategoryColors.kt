@@ -77,4 +77,24 @@ object CategoryColors {
     fun isFallback(categoryName: String): Boolean = accents[categoryName] == null
 
     fun fallbackColor(): Int = Color.rgb(0x8C, 0x98, 0xA4)
+
+    // 分类名 → 图标资源。用于在列表渲染时按分类名解析图标，
+    // 避免个别条目存的历史 iconRes 与实际分类名不符（导致图标显示错误）。
+    private val iconRes = mapOf(
+        "餐饮" to R.drawable.ic_food,
+        "交通" to R.drawable.ic_transport,
+        "购物" to R.drawable.ic_shopping,
+        "娱乐" to R.drawable.ic_entertainment,
+        "医疗" to R.drawable.ic_medical,
+        "教育" to R.drawable.ic_education,
+        "住房" to R.drawable.ic_housing,
+        "其他" to R.drawable.ic_other,
+        "工资" to R.drawable.ic_salary,
+        "奖金" to R.drawable.ic_bonus,
+        "投资" to R.drawable.ic_investment,
+        "兼职" to R.drawable.ic_side_job
+    )
+
+    /** 按分类名取图标资源；未命中回退到「其他」。 */
+    fun iconResFor(categoryName: String): Int = iconRes[categoryName] ?: R.drawable.ic_other
 }
