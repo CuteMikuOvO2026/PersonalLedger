@@ -22,6 +22,8 @@
     <string name="report_empty_weekly">最近 7 天暂无支出</string>
     <string name="report_day_records_title">%1$s 的支出记录</string>
     <string name="report_day_no_records">当日暂无支出</string>
+    <string name="report_category_records_title">%1$s 的支出记录</string>
+    <string name="report_category_no_records">该分类暂无支出</string>
     <string name="report_center_expense">支出分类</string>
     <string name="reset_title">恢复初始状态</string>
     <string name="reset_message">确定要清空所有记录和预算吗？\n\n此操作不可撤销。</string>

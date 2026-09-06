@@ -349,6 +349,14 @@ class ReportFragment : Fragment() {
                 verticalAlignment = Legend.LegendVerticalAlignment.CENTER
                 horizontalAlignment = Legend.LegendHorizontalAlignment.RIGHT
             }
+            setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
+                override fun onValueSelected(e: Entry?, h: Highlight?) {
+                    val category = (e as? PieEntry)?.label ?: return
+                    showCategoryRecords(category)
+                }
+
+                override fun onNothingSelected() = Unit
+            })
             animateY(800)
         }
     }
@@ -433,6 +441,36 @@ class ReportFragment : Fragment() {
 
         AlertDialog.Builder(requireContext())
             .setTitle(getString(R.string.report_day_records_title, date))
+            .setMessage(rows)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    /** 点击饼图的某个分类：显示该分类的所有支出记录。 */
+    private fun showCategoryRecords(categoryName: String) {
+        val items = viewModel.historyList.value
+            ?.filter { it.isExpense && it.categoryName == categoryName }
+            ?: emptyList()
+
+        if (items.isEmpty()) {
+            AlertDialog.Builder(requireContext())
+                .setTitle(categoryName)
+                .setMessage(getString(R.string.report_category_no_records))
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+            return
+        }
+
+        // 按时间倒序展示
+        val sorted = items.sortedByDescending { it.timeMillis }
+        val rows = sorted.map { item ->
+            val time = LedgerItemMappers.formatMillis(item.timeMillis).substringAfter(' ')
+            val sign = if (item.isExpense) "-" else "+"
+            "$sign${getString(R.string.currency_symbol)}${item.amount}　${item.note.ifEmpty { "-" }}　$time"
+        }.joinToString("\n")
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.report_category_records_title, categoryName))
             .setMessage(rows)
             .setPositiveButton(android.R.string.ok, null)
             .show()
