@@ -1,11 +1,15 @@
 package com.example.personalledger
 
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.EditText
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
@@ -199,29 +203,99 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
     }
 
     private fun showAddCategoryDialog() {
-        val editText = EditText(requireContext()).apply {
+        val context = requireContext()
+        val editText = EditText(context).apply {
             hint = getString(R.string.category_name_hint)
             setPadding(48, 32, 48, 32)
         }
 
-        AlertDialog.Builder(requireContext())
+        val selectedColor = intArrayOf(CategoryColors.pickerPalette[8]) // 默认给一个柔和绿
+        val colorPicker = buildColorPicker(selectedColor[0]) { selectedColor[0] = it }
+
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(editText)
+            addView(colorPicker)
+        }
+
+        AlertDialog.Builder(context)
             .setTitle(R.string.add_custom_category)
-            .setView(editText)
+            .setView(content)
             .setPositiveButton(R.string.save) { _, _ ->
                 val name = editText.text.toString().trim()
                 if (name.isBlank()) {
-                    Toast.makeText(requireContext(), getString(R.string.category_name_empty), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, getString(R.string.category_name_empty), Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
                 if (name.length > 8) {
-                    Toast.makeText(requireContext(), getString(R.string.category_name_too_long), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, getString(R.string.category_name_too_long), Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
                 val type = if (isExpense) "expense" else "income"
-                viewModel.addCustomCategory(name, R.drawable.ic_other, type)
+                viewModel.addCustomCategory(name, R.drawable.ic_other, type, selectedColor[0])
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    /** 构建「选择颜色」色板（横向可滚动），返回一个带标题的分组。 */
+    private fun buildColorPicker(initialColor: Int, onSelect: (Int) -> Unit): View {
+        val context = requireContext()
+        val density = context.resources.displayMetrics.density
+        val size = (40 * density).toInt()
+        val margin = (8 * density).toInt()
+
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        val swatches = mutableListOf<View>()
+        val selectedIndex = intArrayOf(
+            CategoryColors.pickerPalette.indexOfFirst { it == initialColor }.coerceAtLeast(0)
+        )
+
+        CategoryColors.pickerPalette.forEachIndexed { index, color ->
+            val swatch = View(context).apply {
+                layoutParams = LinearLayout.LayoutParams(size, size)
+                    .apply { setMargins(margin, margin, margin, margin) }
+                isClickable = true
+                isFocusable = true
+                contentDescription = getString(R.string.choose_color) + " " + (index + 1)
+            }
+            swatch.background = ovalDrawable(color, index == selectedIndex[0])
+            swatch.setOnClickListener {
+                selectedIndex[0] = index
+                swatches.forEachIndexed { i, sv ->
+                    sv.background = ovalDrawable(CategoryColors.pickerPalette[i], i == index)
+                }
+                onSelect(CategoryColors.pickerPalette[index])
+            }
+            swatches.add(swatch)
+            row.addView(swatch)
+        }
+
+        val scroll = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(row)
+        }
+
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(context).apply {
+                text = getString(R.string.choose_color)
+                setPadding((16 * density).toInt(), (16 * density).toInt(), 0, 0)
+            })
+            addView(scroll)
+        }
+    }
+
+    private fun ovalDrawable(color: Int, selected: Boolean): GradientDrawable {
+        val density = resources.displayMetrics.density
+        val stroke = (3 * density).toInt()
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(color)
+            setStroke(stroke, if (selected) 0xFF1E2A24.toInt() else 0x00000000)
+        }
     }
 
     private fun showDeleteCategoryDialog(category: CategoryItem) {

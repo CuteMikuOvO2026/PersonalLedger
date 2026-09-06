@@ -12,4 +12,9 @@
         android:icon="@drawable/ic_action_auto"
         android:title="@string/auto_bookkeeping"
         app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_theme"
+        android:icon="@drawable/ic_action_theme"
+        android:title="@string/theme_mode"
+        app:showAsAction="ifRoom" />
 </menu>

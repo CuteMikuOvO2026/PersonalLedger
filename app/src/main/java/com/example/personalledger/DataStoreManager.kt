@@ -35,6 +35,7 @@ class DataStoreManager(private val context: Context) {
         val LEGACY_BUDGET_KEY = intPreferencesKey("ledger_budget")
         val CUSTOM_CATEGORIES_KEY = stringPreferencesKey("custom_categories")
         val AUTO_BOOKKEEPING_KEY = booleanPreferencesKey("auto_bookkeeping_enabled")
+        val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
 
         // 旧的条目历史 key（仅迁移时读取）
         val LEGACY_HISTORY_LIST_KEY = stringPreferencesKey("ledger_history_list")
@@ -84,6 +85,18 @@ class DataStoreManager(private val context: Context) {
     suspend fun setAutoBookkeepingEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTO_BOOKKEEPING_KEY] = enabled
+        }
+    }
+
+    // ---------- 主题模式 ----------
+
+    val themeModeFlow: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[THEME_MODE_KEY] ?: ThemeSettings.SYSTEM
+    }
+
+    suspend fun saveThemeMode(mode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[THEME_MODE_KEY] = mode
         }
     }
 

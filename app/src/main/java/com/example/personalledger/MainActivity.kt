@@ -1,4 +1,4 @@
-﻿package com.example.personalledger
+package com.example.personalledger
 
 import android.content.Context
 import android.content.res.Configuration
@@ -51,33 +51,28 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNavView.setOnItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.navigation_home -> {
-                    supportFragmentManager.beginTransaction()
-                        .setCustomAnimations(
-                            R.anim.slide_in_left,
-                            R.anim.slide_out_right,
-                            R.anim.slide_in_right,
-                            R.anim.slide_out_left
-                        )
-                        .replace(R.id.fragment_container, HomeFragment())
-                        .commit()
+                    switchTo(HomeFragment())
                     true
                 }
 
                 R.id.navigation_report -> {
-                    supportFragmentManager.beginTransaction()
-                        .setCustomAnimations(
-                            R.anim.slide_in_right,
-                            R.anim.slide_out_left,
-                            R.anim.slide_in_left,
-                            R.anim.slide_out_right
-                        )
-                        .replace(R.id.fragment_container, ReportFragment())
-                        .commit()
+                    val fragment = ReportFragment()
+                    reportFragment = fragment
+                    switchTo(fragment)
                     true
                 }
 
                 else -> false
             }
         }
+    }
+
+    /** 用轻量淡入淡出（crossfade）替换当前页面，比滑动手势更顺滑。 */
+    private fun switchTo(fragment: androidx.fragment.app.Fragment) {
+        supportFragmentManager.beginTransaction()
+            .setReorderingAllowed(true)
+            .setCustomAnimations(R.anim.fade_in, R.anim.fade_out, R.anim.fade_in, R.anim.fade_out)
+            .replace(R.id.fragment_container, fragment)
+            .commit()
     }
 }

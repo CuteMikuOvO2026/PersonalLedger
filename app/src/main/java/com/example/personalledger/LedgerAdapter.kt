@@ -78,12 +78,10 @@ class LedgerAdapter(
 
         fun bind(item: LedgerItem, isOpen: Boolean) {
             val context = binding.root.context
-            val containerColor = if (item.isExpense) {
-                ContextCompat.getColor(context, R.color.expense_container)
-            } else {
-                ContextCompat.getColor(context, R.color.income_container)
-            }
-            val accentColor = if (item.isExpense) {
+            // 分类彩色方案：图标底/图标色按分类取色，金额正负用类型色（收入绿 / 支出红）
+            val containerColor = CategoryColors.containerOf(item.categoryName)
+            val iconColor = CategoryColors.accentOf(item.categoryName)
+            val amountColor = if (item.isExpense) {
                 ContextCompat.getColor(context, R.color.expense)
             } else {
                 ContextCompat.getColor(context, R.color.income)
@@ -97,9 +95,9 @@ class LedgerAdapter(
             binding.sign.text = if (item.isExpense) "-" else "+"
 
             binding.iconContainer.setCardBackgroundColor(containerColor)
-            binding.icon.imageTintList = ColorStateList.valueOf(accentColor)
-            binding.sign.setTextColor(accentColor)
-            binding.amount.setTextColor(accentColor)
+            binding.icon.imageTintList = ColorStateList.valueOf(iconColor)
+            binding.sign.setTextColor(amountColor)
+            binding.amount.setTextColor(amountColor)
 
             binding.buttonDelete.setOnClickListener { onDeleteClick(item) }
 

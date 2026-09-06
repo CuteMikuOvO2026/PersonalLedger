@@ -57,6 +57,7 @@ object LedgerStats {
         return ReportData(
             pieEntries = pie,
             weeklyBar = weekly,
+            weeklyDates = getWeeklyExpenseDates(),
             summary = getReportSummary(list, budgetValue),
             hasData = list.isNotEmpty()
         )
@@ -74,20 +75,12 @@ object LedgerStats {
     }
 
     fun getWeeklyExpenseBarEntries(list: List<LedgerItem>): Pair<List<BarEntry>, List<String>> {
-        val calendar = Calendar.getInstance()
         val dateFormat = SimpleDateFormat("MM-dd", Locale.getDefault())
         val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
         val entries = mutableListOf<BarEntry>()
         val labels = mutableListOf<String>()
-        val dateRange = mutableListOf<String>()
-
-        for (i in 0 until 7) {
-            calendar.time = Date()
-            calendar.add(Calendar.DAY_OF_MONTH, -i)
-            dateRange.add(dayFormat.format(calendar.time))
-        }
-        dateRange.reverse()
+        val dateRange = lastSevenDays()
 
         val expenseList = list.filter { it.isExpense }
         val groupedExpenses = expenseList.groupBy { item ->
@@ -105,6 +98,20 @@ object LedgerStats {
             }
         }
         return Pair(entries, labels)
+    }
+
+    /** 最近 7 天的完整日期（yyyy-MM-dd，按时间正序），用于点击柱状图定位具体某天。 */
+    fun getWeeklyExpenseDates(): List<String> = lastSevenDays()
+
+    private fun lastSevenDays(): List<String> {
+        val calendar = Calendar.getInstance()
+        val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val list = (0 until 7).map { i ->
+            calendar.time = Date()
+            calendar.add(Calendar.DAY_OF_MONTH, -i)
+            dayFormat.format(calendar.time)
+        }
+        return list.reversed()
     }
 
     fun getReportSummary(list: List<LedgerItem>, budgetValue: Double): String {

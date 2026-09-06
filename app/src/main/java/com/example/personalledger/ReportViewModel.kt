@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.flowOn
 data class ReportData(
     val pieEntries: List<PieEntry>,
     val weeklyBar: Pair<List<BarEntry>, List<String>>,
+    val weeklyDates: List<String> = emptyList(),
     val summary: String,
     val hasData: Boolean
 )

@@ -369,6 +369,11 @@ class HomeFragment : Fragment() {
                         true
                     }
 
+                    R.id.action_theme -> {
+                        showThemeDialog()
+                        true
+                    }
+
                     else -> false
                 }
         }
@@ -444,6 +449,18 @@ class HomeFragment : Fragment() {
             .setTitle(R.string.auto_bookkeeping)
             .setView(content)
             .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    private fun showThemeDialog() {
+        val current = viewModel.themeMode.value ?: ThemeSettings.SYSTEM
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.theme_mode)
+            .setSingleChoiceItems(ThemeSettings.labels(), ThemeSettings.indexOf(current)) { dialog, which ->
+                viewModel.setThemeMode(ThemeSettings.fromIndex(which))
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 

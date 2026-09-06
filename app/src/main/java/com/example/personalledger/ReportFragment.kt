@@ -29,11 +29,14 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.BarData
 import com.github.mikephil.charting.data.BarDataSet
 import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.github.mikephil.charting.formatter.ValueFormatter
+import com.github.mikephil.charting.highlight.Highlight
+import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -50,6 +53,9 @@ class ReportFragment : Fragment() {
             ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
 
+    /** 最近 7 天的完整日期（与柱状图 x 轴一一对应），用于点击某天查看当日记录。 */
+    private var lastWeeklyDates: List<String> = emptyList()
+
     private val decimalFormatter = object : ValueFormatter() {
         override fun getFormattedValue(value: Float): String {
             return String.format(Locale.getDefault(), "%.2f", value)
@@ -59,13 +65,13 @@ class ReportFragment : Fragment() {
     private val chartColors by lazy {
         listOf(
             ContextCompat.getColor(requireContext(), R.color.md_theme_primary),
-            Color.parseColor("#7B8FD8"),
+            Color.parseColor("#5FC3E8"),
             ContextCompat.getColor(requireContext(), R.color.md_theme_tertiary),
-            Color.parseColor("#6D9BF0"),
-            Color.parseColor("#8A7BF0"),
-            Color.parseColor("#5E97C9"),
-            Color.parseColor("#90C7B8"),
-            Color.parseColor("#A0AED0")
+            Color.parseColor("#8E7CC3"),
+            Color.parseColor("#E28CA8"),
+            Color.parseColor("#3FB6A6"),
+            Color.parseColor("#6C86E6"),
+            Color.parseColor("#DBA84D")
         )
     }
 
@@ -112,9 +118,13 @@ class ReportFragment : Fragment() {
         initCharts()
 
         reportViewModel.reportData.observe(viewLifecycleOwner) { report ->
+            lastWeeklyDates = report.weeklyDates
             updatePieChart(report.pieEntries)
             updateBarChart(report.weeklyBar)
         }
+
+        // 观察完整历史列表，使其 value 可用，供“点击某天查看当日记录”查询
+        viewModel.historyList.observe(viewLifecycleOwner) { }
 
         setupMenuProvider()
     }
@@ -378,8 +388,48 @@ class ReportFragment : Fragment() {
 
             axisRight.isEnabled = false
             legend.isEnabled = false
+
+            setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
+                override fun onValueSelected(e: Entry?, h: Highlight?) {
+                    val index = h?.x?.toInt() ?: return
+                    val date = lastWeeklyDates.getOrNull(index) ?: return
+                    showDayRecords(date)
+                }
+
+                override fun onNothingSelected() = Unit
+            })
             animateY(800)
         }
+    }
+
+    /** 点击柱状图的某一天：显示当天的支出记录。 */
+    private fun showDayRecords(date: String) {
+        val items = viewModel.historyList.value
+            ?.filter { it.isExpense && LedgerItemMappers.formatMillis(it.timeMillis).startsWith(date) }
+            ?: emptyList()
+
+        if (items.isEmpty()) {
+            AlertDialog.Builder(requireContext())
+                .setTitle(date)
+                .setMessage(getString(R.string.report_day_no_records))
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+            return
+        }
+
+        // 按时间倒序展示
+        val sorted = items.sortedByDescending { it.timeMillis }
+        val rows = sorted.map { item ->
+            val time = LedgerItemMappers.formatMillis(item.timeMillis).substringAfter(' ')
+            val sign = if (item.isExpense) "-" else "+"
+            "${item.categoryName}　$sign${getString(R.string.currency_symbol)}${item.amount}　${item.note.ifEmpty { "-" }}　$time"
+        }.joinToString("\n")
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.report_day_records_title, date))
+            .setMessage(rows)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun updatePieChart(entries: List<PieEntry>) {

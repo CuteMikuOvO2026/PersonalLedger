@@ -51,8 +51,9 @@ class CategoryAdapter(
 
             val selectedBackground = ContextCompat.getColor(context, R.color.surface_chip_selected)
             val selectedText = ContextCompat.getColor(context, R.color.text_primary)
-            val defaultBackground = ContextCompat.getColor(context, R.color.surface_container_low)
-            val defaultIcon = ContextCompat.getColor(context, R.color.text_secondary)
+            // 未选中态按分类取色：同色系淡底 + 分类强调色图标（自定义分类用用户所选颜色）
+            val defaultBackground = CategoryColors.containerFor(category.name, category.color)
+            val defaultIcon = CategoryColors.accentFor(category.name, category.color)
             val defaultText = ContextCompat.getColor(context, R.color.text_secondary)
 
             if (isSelected) {

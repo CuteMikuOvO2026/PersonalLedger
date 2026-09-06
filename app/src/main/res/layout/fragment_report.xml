@@ -50,9 +50,8 @@
                 android:layout_marginTop="14dp"
                 app:cardBackgroundColor="@color/surface_container"
                 app:cardCornerRadius="24dp"
-                app:cardElevation="0dp"
-                app:strokeColor="@color/md_theme_outlineVariant"
-                app:strokeWidth="1dp">
+                app:cardElevation="3dp"
+                app:strokeWidth="0dp">
 
                 <com.github.mikephil.charting.charts.PieChart
                     android:id="@+id/pie_chart_expense"
@@ -88,9 +87,8 @@
                 android:layout_marginTop="14dp"
                 app:cardBackgroundColor="@color/surface_container"
                 app:cardCornerRadius="24dp"
-                app:cardElevation="0dp"
-                app:strokeColor="@color/md_theme_outlineVariant"
-                app:strokeWidth="1dp">
+                app:cardElevation="3dp"
+                app:strokeWidth="0dp">
 
                 <com.github.mikephil.charting.charts.BarChart
                     android:id="@+id/bar_chart_weekly"

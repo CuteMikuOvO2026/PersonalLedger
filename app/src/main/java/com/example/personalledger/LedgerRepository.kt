@@ -37,6 +37,8 @@ class LedgerRepository(context: Context) {
 
     val autoBookkeepingEnabled: Flow<Boolean> = dataStoreManager.autoBookkeepingFlow
 
+    val themeMode: Flow<String> = dataStoreManager.themeModeFlow
+
     init {
         migrateLegacyDataIfNeeded()
     }
@@ -65,9 +67,9 @@ class LedgerRepository(context: Context) {
 
     suspend fun saveBudget(budget: Double) = dataStoreManager.saveBudget(budget)
 
-    suspend fun addCustomCategory(name: String, iconRes: Int, type: String) {
+    suspend fun addCustomCategory(name: String, iconRes: Int, type: String, color: Int) {
         val current = dataStoreManager.customCategoriesFlow.first().toMutableList()
-        current.add(CategoryItem(name, iconRes, type, isCustom = true))
+        current.add(CategoryItem(name, iconRes, type, isCustom = true, color = color))
         dataStoreManager.saveCustomCategories(current)
     }
 
@@ -78,6 +80,8 @@ class LedgerRepository(context: Context) {
     }
 
     suspend fun setAutoBookkeepingEnabled(enabled: Boolean) = dataStoreManager.setAutoBookkeepingEnabled(enabled)
+
+    suspend fun saveThemeMode(mode: String) = dataStoreManager.saveThemeMode(mode)
 
     /** 判断在 [sinceMillis] 之后是否已存在同金额、同收支方向的记录，用于自动记账去重。 */
     suspend fun existsRecentEntry(amountCents: Long, isExpense: Boolean, sinceMillis: Long): Boolean =

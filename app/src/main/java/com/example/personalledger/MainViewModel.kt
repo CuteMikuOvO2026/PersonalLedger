@@ -1,6 +1,7 @@
 package com.example.personalledger
 
 import android.app.Application
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -11,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
@@ -89,6 +91,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val autoBookkeepingEnabled: LiveData<Boolean> = repository.autoBookkeepingEnabled.asLiveData()
 
+    val themeMode: LiveData<String> = repository.themeMode.asLiveData()
+
+    init {
+        // 让账目列表能按用户所选颜色解析自定义分类
+        viewModelScope.launch {
+            repository.customCategories.collect { CategoryColors.registerCustomColors(it) }
+        }
+    }
+
+    fun setThemeMode(mode: String) {
+        // 同步写入 SharedPreferences（下次启动即时应用），再写入 DataStore（供 LiveData/备份）
+        ThemeSettings.saveMode(getApplication(), mode)
+        viewModelScope.launch { repository.saveThemeMode(mode) }
+        AppCompatDelegate.setDefaultNightMode(ThemeSettings.toNightMode(mode))
+    }
+
     fun setAutoBookkeepingEnabled(enabled: Boolean) {
         viewModelScope.launch { repository.setAutoBookkeepingEnabled(enabled) }
     }
@@ -160,8 +178,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.saveBudget(newBudget) }
     }
 
-    fun addCustomCategory(name: String, iconRes: Int, type: String) {
-        viewModelScope.launch { repository.addCustomCategory(name, iconRes, type) }
+    fun addCustomCategory(name: String, iconRes: Int, type: String, color: Int) {
+        viewModelScope.launch { repository.addCustomCategory(name, iconRes, type, color) }
     }
 
     fun removeCustomCategory(category: CategoryItem) {

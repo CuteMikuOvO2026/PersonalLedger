@@ -20,6 +20,8 @@
     <string name="report_import">导入备份</string>
     <string name="report_empty_expense">暂无支出数据</string>
     <string name="report_empty_weekly">最近 7 天暂无支出</string>
+    <string name="report_day_records_title">%1$s 的支出记录</string>
+    <string name="report_day_no_records">当日暂无支出</string>
     <string name="report_center_expense">支出分类</string>
     <string name="reset_title">恢复初始状态</string>
     <string name="reset_message">确定要清空所有记录和预算吗？\n\n此操作不可撤销。</string>
@@ -78,6 +80,7 @@
     <string name="category_side_job">兼职</string>
     <string name="add_category">+ 添加分类</string>
     <string name="add_custom_category">添加自定义分类</string>
+    <string name="choose_color">选择颜色</string>
     <string name="category_name_hint">输入分类名称</string>
     <string name="category_name_empty">分类名称不能为空</string>
     <string name="category_name_too_long">分类名称不能超过8个字</string>
@@ -113,6 +116,7 @@
 
     <!-- 自动记账 -->
     <string name="auto_bookkeeping">自动记账</string>
+    <string name="theme_mode">外观</string>
     <string name="auto_bookkeeping_desc">开启后，App 会监听微信、支付宝的支付成功通知，自动解析金额、收支方向与分类，并写入账本。</string>
     <string name="auto_bookkeeping_permission">通知使用权</string>
     <string name="auto_bookkeeping_permission_granted">已开启</string>

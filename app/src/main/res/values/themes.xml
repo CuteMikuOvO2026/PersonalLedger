@@ -1,5 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Base.Theme.PersonalLedger" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Base.Theme.PersonalLedger" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">@color/md_theme_primary</item>
         <item name="colorOnPrimary">@color/md_theme_onPrimary</item>
         <item name="colorPrimaryContainer">@color/md_theme_primaryContainer</item>
@@ -26,6 +26,8 @@
         <item name="android:windowBackground">@color/md_theme_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@color/surface_container</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:fontFamily">@font/app_ui_font</item>
         <item name="fontFamily">@font/app_ui_font</item>
         <item name="toolbarStyle">@style/Widget.Material3.Toolbar</item>
