@@ -464,7 +464,8 @@ class ReportFragment : Fragment() {
         // 按时间倒序展示
         val sorted = items.sortedByDescending { it.timeMillis }
         val rows = sorted.map { item ->
-            val time = LedgerItemMappers.formatMillis(item.timeMillis).substringAfter(' ')
+            // 分类详情跨多天，带上完整日期与时间
+            val time = LedgerItemMappers.formatMillis(item.timeMillis)
             val sign = if (item.isExpense) "-" else "+"
             "$sign${getString(R.string.currency_symbol)}${item.amount}　${item.note.ifEmpty { "-" }}　$time"
         }.joinToString("\n")
