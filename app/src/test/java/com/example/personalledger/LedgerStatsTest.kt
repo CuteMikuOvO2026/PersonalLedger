@@ -73,6 +73,62 @@ class LedgerStatsTest {
     }
 
     @Test
+    fun buildHomeStats_fromDatabaseTotals_matchesListComputation() {
+        // 首页统计已改为数据库聚合（只拿“分”的合计值），结果必须与逐条求和完全一致
+        val now = System.currentTimeMillis()
+        val list = listOf(
+            item(cents = 3000, isExpense = false, timeMillis = now),
+            item(cents = 800, isExpense = true, timeMillis = now),
+            item(cents = 1200, isExpense = true, timeMillis = now)
+        )
+        val expected = LedgerStats.computeHomeStats(list, budgetValue = 100.0)
+
+        val fromDatabaseTotals = LedgerStats.buildHomeStats(
+            todayIncomeCents = 3000,
+            todayExpenseCents = 2000,
+            monthIncomeCents = 3000,
+            monthExpenseCents = 2000,
+            budgetValue = 100.0
+        )
+
+        assertEquals(expected, fromDatabaseTotals)
+        assertEquals(20f, fromDatabaseTotals.budgetProgress, 0.001f)
+        assertEquals("20.00", fromDatabaseTotals.monthExpense)
+    }
+
+    @Test
+    fun buildHomeStats_ignoresRecordsOutsideCurrentMonth() {
+        // 40 天前的记录必然落在上个月，因此不应计入本月支出
+        val now = System.currentTimeMillis()
+        val lastMonth = now - 40L * 24 * 60 * 60 * 1000
+        val stats = LedgerStats.computeHomeStats(
+            listOf(
+                item(cents = 5000, isExpense = true, timeMillis = lastMonth),
+                item(cents = 1500, isExpense = true, timeMillis = now)
+            ),
+            budgetValue = 100.0
+        )
+
+        assertEquals("15.00", stats.monthExpense)
+        assertEquals("15.00", stats.todayExpense)
+        // 本月只有支出，结余为负
+        assertFalse(stats.monthPositive)
+        assertEquals(15f, stats.budgetProgress, 0.001f)
+    }
+
+    @Test
+    fun currentStatsRanges_coversNowAndNestsTodayInMonth() {
+        val now = System.currentTimeMillis()
+        val ranges = LedgerStats.currentStatsRanges()
+
+        assertTrue(ranges.todayStart <= now && now <= ranges.todayEnd)
+        assertTrue(ranges.monthStart <= now && now <= ranges.monthEnd)
+        // 本月区间应完整包含今日区间
+        assertTrue(ranges.monthStart <= ranges.todayStart)
+        assertTrue(ranges.todayEnd <= ranges.monthEnd)
+    }
+
+    @Test
     fun pieEntries_excludeIncomeAndSumByCategory() {
         val now = System.currentTimeMillis()
         val list = listOf(
@@ -108,7 +164,7 @@ class LedgerStatsTest {
         assertTrue(summary.contains("总收入: ¥10.00"))
         assertTrue(summary.contains("总支出: ¥4.00"))
         assertTrue(summary.contains("结余: ¥6.00"))
-        assertTrue(summary.contains("当月预算: ¥50.00"))
+        assertTrue(summary.contains("当月预算: ¥5000.00"))
         assertTrue(summary.contains("记录总数: 2"))
     }
 }

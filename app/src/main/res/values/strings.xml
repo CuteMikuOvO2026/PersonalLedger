@@ -12,6 +12,10 @@
     <string name="percent_value">%1$d%%</string>
     <string name="recent_records">最近记录</string>
     <string name="filter">筛选</string>
+    <string name="page_previous">上一页</string>
+    <string name="page_next">下一页</string>
+    <!-- 首页页码栏：第 %1$d/%2$d 页 · 共 %3$d 条 -->
+    <string name="page_indicator">第 %1$d/%2$d 页 · 共 %3$d 条</string>
     <string name="report_title">数据报表</string>
     <string name="report_expense_share">支出分类占比</string>
     <string name="report_weekly_expense">最近 7 天每日支出</string>

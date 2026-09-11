@@ -31,6 +31,9 @@ class LedgerRepository(context: Context) {
     val historyList: Flow<List<LedgerItem>> =
         dao.observeAll().map { list -> list.map { LedgerItemMappers.entityToItem(it) } }
 
+    /** 全部分类名（按最近使用时间倒序），供首页筛选弹窗使用，无需读取整表记录。 */
+    val categoryNames: Flow<List<String>> = dao.observeCategoryNames()
+
     val budget: Flow<Double> = dataStoreManager.budgetFlow
 
     val customCategories: Flow<List<CategoryItem>> = dataStoreManager.customCategoriesFlow
@@ -87,21 +90,51 @@ class LedgerRepository(context: Context) {
     suspend fun existsRecentEntry(amountCents: Long, isExpense: Boolean, sinceMillis: Long): Boolean =
         dao.countRecent(amountCents, isExpense, sinceMillis) > 0
 
-    fun queryFiltered(
-        typeAll: Boolean,
-        typeExpense: Boolean,
-        typeIncome: Boolean,
-        category: String?,
-        search: String,
-        minCents: Long?,
-        maxCents: Long?,
-        dateFrom: Long?,
-        dateTo: Long?
+    /**
+     * 首页记录列表：只读取当前页（[limit] 条，从 [offset] 开始）。
+     * 筛选、排序、分页全部下推到 Room，记录再多也只加载一页数据。
+     */
+    fun queryFilteredPage(
+        query: LedgerQuery,
+        limit: Int,
+        offset: Int
     ): Flow<List<LedgerItem>> =
-        dao.queryFiltered(
-            typeAll, typeExpense, typeIncome, category,
-            search, minCents, maxCents, dateFrom, dateTo
+        dao.queryFilteredPage(
+            typeAll = query.typeAll,
+            typeExpense = query.typeExpense,
+            typeIncome = query.typeIncome,
+            category = query.category,
+            search = query.search,
+            minCents = query.minCents,
+            maxCents = query.maxCents,
+            dateFrom = query.dateFrom,
+            dateTo = query.dateTo,
+            limit = limit,
+            offset = offset
         ).map { list -> list.map { LedgerItemMappers.entityToItem(it) } }
+
+    /** [queryFilteredPage] 相同筛选条件下的总条数，用于计算总页数。 */
+    fun countFiltered(query: LedgerQuery): Flow<Int> =
+        dao.countFiltered(
+            typeAll = query.typeAll,
+            typeExpense = query.typeExpense,
+            typeIncome = query.typeIncome,
+            category = query.category,
+            search = query.search,
+            minCents = query.minCents,
+            maxCents = query.maxCents,
+            dateFrom = query.dateFrom,
+            dateTo = query.dateTo
+        )
+
+    /** 首页概览的今日/本月收支聚合（由数据库直接求和，不读取整表）。 */
+    fun homeTotals(
+        todayStart: Long,
+        todayEnd: Long,
+        monthStart: Long,
+        monthEnd: Long
+    ): Flow<HomeTotals> =
+        dao.observeHomeTotals(todayStart, todayEnd, monthStart, monthEnd)
 
     suspend fun resetAll() {
         dao.deleteAll()

@@ -17,11 +17,13 @@ class LedgerAdapter(
     private var items: List<LedgerItem> = emptyList()
     private var openPosition = RecyclerView.NO_POSITION
 
+    /**
+     * 用新数据替换整个列表（首页每次都按当前页重新查询）。
+     * 整表替换时一并丢弃滑开状态，避免翻页后新一页的某条记录被误显示为已滑开。
+     */
     fun submitList(newList: List<LedgerItem>) {
         items = newList
-        if (openPosition >= items.size) {
-            openPosition = RecyclerView.NO_POSITION
-        }
+        openPosition = RecyclerView.NO_POSITION
         notifyDataSetChanged()
     }
 

@@ -41,6 +41,12 @@ class HomeFragment : Fragment() {
 
     private val viewModel: MainViewModel by activityViewModels()
 
+    /** 已渲染的页码，用于仅在真正翻页时把列表滚回顶部。 */
+    private var renderedPage: Int? = null
+
+    /** 筛选弹窗的分类候选（由数据库去重得出，避免为了筛选把整表读进内存）。 */
+    private var filterCategoryNames: List<String> = emptyList()
+
     private val ledgerAdapter: LedgerAdapter = LedgerAdapter(
         onEditClick = { item: LedgerItem ->
             ledgerAdapter.closeOpenItem()
@@ -66,10 +72,17 @@ class HomeFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         setupRecyclerView()
         setupFilterClick()
+        setupPagerClick()
         setupObservers()
         setupFab()
         setupBudgetClick()
         setupMenuProvider()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 应用可能在后台跨过零点，回到前台时刷新“今日/本月”统计口径
+        viewModel.refreshHomeStatsRanges()
     }
 
     private fun setupRecyclerView() {
@@ -83,8 +96,15 @@ class HomeFragment : Fragment() {
     private fun setupObservers() {
         viewModel.filteredHistory.observe(viewLifecycleOwner) { list ->
             ledgerAdapter.submitList(list)
-            binding.layoutEmpty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
-            binding.recyclerView.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
+        }
+
+        viewModel.pageInfo.observe(viewLifecycleOwner) { info ->
+            renderPageInfo(info)
+        }
+
+        // 分类候选由数据库 DISTINCT 得出，筛选弹窗不再依赖全量记录
+        viewModel.categoryNames.observe(viewLifecycleOwner) { names ->
+            filterCategoryNames = names
         }
 
         viewModel.todayIncome.observe(viewLifecycleOwner) { income ->
@@ -134,6 +154,40 @@ class HomeFragment : Fragment() {
         }
     }
 
+    /**
+     * 渲染分页栏与列表/空状态。
+     *
+     * “是否有记录”以总条数为准，避免翻页瞬间（当前页数据尚未返回）误显示空状态。
+     */
+    private fun renderPageInfo(info: LedgerPageInfo) {
+        val hasRecords = info.totalCount > 0
+        binding.layoutPager.visibility = if (hasRecords) View.VISIBLE else View.GONE
+        binding.recyclerView.visibility = if (hasRecords) View.VISIBLE else View.GONE
+        binding.layoutEmpty.visibility = if (hasRecords) View.GONE else View.VISIBLE
+
+        binding.textPageIndicator.text =
+            getString(R.string.page_indicator, info.page, info.pageCount, info.totalCount)
+        setPageButtonEnabled(binding.buttonPrevPage, info.hasPrevious)
+        setPageButtonEnabled(binding.buttonNextPage, info.hasNext)
+
+        scrollToRecordsTopWhenPageChanged(info)
+    }
+
+    private fun setPageButtonEnabled(button: TextView, enabled: Boolean) {
+        button.isEnabled = enabled
+        button.alpha = if (enabled) 1f else 0.4f
+    }
+
+    /** 翻页后把记录区滚回可视区域顶部，否则会停留在上一页的滚动位置。 */
+    private fun scrollToRecordsTopWhenPageChanged(info: LedgerPageInfo) {
+        val previousPage = renderedPage
+        renderedPage = info.page
+        if (previousPage == null || previousPage == info.page) return
+        binding.nestedScrollView.post {
+            binding.nestedScrollView.smoothScrollTo(0, binding.layoutRecordsHeader.top)
+        }
+    }
+
     private fun updateBoard(stats: HomeStats) {
         val amountColor = if (stats.monthPositive) {
             binding.textBoardTitle.text = getString(R.string.home_balance_title)
@@ -156,15 +210,14 @@ class HomeFragment : Fragment() {
         binding.textDateFilter.setOnClickListener { showDateFilterDialog() }
     }
 
+    private fun setupPagerClick() {
+        binding.buttonPrevPage.setOnClickListener { viewModel.goToPreviousPage() }
+        binding.buttonNextPage.setOnClickListener { viewModel.goToNextPage() }
+    }
+
     private fun buildFilterOptions(): List<String> {
         return mutableListOf("全部", "支出", "收入").apply {
-            addAll(
-                viewModel.historyList.value
-                    .orEmpty()
-                    .map { it.categoryName }
-                    .filter { it.isNotBlank() }
-                    .distinct()
-            )
+            addAll(filterCategoryNames.filter { it.isNotBlank() })
         }
     }
 
@@ -333,7 +386,7 @@ class HomeFragment : Fragment() {
                 viewModel.deleteLedgerEntry(item)
                 Snackbar.make(binding.coordinatorLayout, R.string.deleted_message, Snackbar.LENGTH_LONG)
                     .setAction(R.string.delete_undo) {
-                        viewModel.addLedgerEntry(item)
+                        viewModel.restoreLedgerEntry(item)
                     }
                     .setAnchorView(binding.fabAdd)
                     .show()

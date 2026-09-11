@@ -8,11 +8,31 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
+/** “今日 / 本月”的起止毫秒区间，用于数据库端的首页统计聚合。 */
+data class StatsRanges(
+    val todayStart: Long,
+    val todayEnd: Long,
+    val monthStart: Long,
+    val monthEnd: Long
+)
+
 /**
  * 账本统计/报表的纯计算逻辑（不依赖 Android 组件），
  * 供 [MainViewModel] 与 [ReportViewModel] 复用，并便于 JVM 单元测试。
  */
 object LedgerStats {
+
+    /** 当前时刻对应的“今日 / 本月”区间（首页统计用，跨零点后重新取值即可刷新口径）。 */
+    fun currentStatsRanges(): StatsRanges {
+        val today = todayRangeMillis()
+        val month = monthRangeMillis()
+        return StatsRanges(
+            todayStart = today.first,
+            todayEnd = today.second,
+            monthStart = month.first,
+            monthEnd = month.second
+        )
+    }
 
     fun computeHomeStats(list: List<LedgerItem>, budgetValue: Double): HomeStats {
         val today = todayRangeMillis()
@@ -34,6 +54,28 @@ object LedgerStats {
             }
         }
 
+        return buildHomeStats(
+            todayIncomeCents = todayIncomeCents,
+            todayExpenseCents = todayExpenseCents,
+            monthIncomeCents = monthIncomeCents,
+            monthExpenseCents = monthExpenseCents,
+            budgetValue = budgetValue
+        )
+    }
+
+    /**
+     * 用已经聚合好的“分”金额构建首页概览统计。
+     *
+     * 首页的今日/本月收入支出由数据库聚合得出（[LedgerEntryDao.observeHomeTotals]），
+     * 因此不必把整表读进内存；此函数只负责格式与预算进度的纯计算。
+     */
+    fun buildHomeStats(
+        todayIncomeCents: Long,
+        todayExpenseCents: Long,
+        monthIncomeCents: Long,
+        monthExpenseCents: Long,
+        budgetValue: Double
+    ): HomeStats {
         val monthExpenseValue = monthExpenseCents / 100.0
         val progressValue = if (budgetValue > 0) {
             ((monthExpenseValue / budgetValue) * 100).coerceAtMost(100.0).toFloat()
