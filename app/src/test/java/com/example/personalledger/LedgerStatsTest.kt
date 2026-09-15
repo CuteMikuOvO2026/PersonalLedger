@@ -167,4 +167,94 @@ class LedgerStatsTest {
         assertTrue(summary.contains("当月预算: ¥5000.00"))
         assertTrue(summary.contains("记录总数: 2"))
     }
+
+    // ---------- 饼图时间范围筛选 ----------
+
+    private fun daysAgo(days: Int): Long =
+        System.currentTimeMillis() - days * 24L * 60 * 60 * 1000
+
+    @Test
+    fun pieRange_all_keepsEverything() {
+        val list = listOf(
+            item(cents = 1000, isExpense = true, category = "餐饮", timeMillis = daysAgo(0)),
+            item(cents = 2000, isExpense = true, category = "交通", timeMillis = daysAgo(200))
+        )
+        val pie = LedgerStats.getExpenseCategoryPieEntries(list, PieTimeRange.ALL)
+        assertEquals(2, pie.size)
+    }
+
+    @Test
+    fun pieRange_last7Days_excludesOlderRecords() {
+        val list = listOf(
+            item(cents = 1000, isExpense = true, category = "餐饮", timeMillis = daysAgo(1)),
+            item(cents = 5000, isExpense = true, category = "购物", timeMillis = daysAgo(10))
+        )
+        val pie = LedgerStats.getExpenseCategoryPieEntries(list, PieTimeRange.LAST_7_DAYS)
+        assertEquals(1, pie.size)
+        assertEquals("餐饮", pie[0].label)
+        assertEquals(10.0f, pie[0].value, 0.001f)
+    }
+
+    @Test
+    fun pieRange_lastMonth_includesWithin30DaysAndExcludesBeyond() {
+        val list = listOf(
+            item(cents = 1000, isExpense = true, category = "餐饮", timeMillis = daysAgo(29)),
+            item(cents = 2000, isExpense = true, category = "交通", timeMillis = daysAgo(31))
+        )
+        val pie = LedgerStats.getExpenseCategoryPieEntries(list, PieTimeRange.LAST_MONTH)
+        assertEquals(1, pie.size)
+        assertEquals("餐饮", pie[0].label)
+    }
+
+    @Test
+    fun pieRange_last3Months_boundaryAt90Days() {
+        val list = listOf(
+            item(cents = 1000, isExpense = true, category = "餐饮", timeMillis = daysAgo(89)),
+            item(cents = 2000, isExpense = true, category = "交通", timeMillis = daysAgo(91))
+        )
+        val pie = LedgerStats.getExpenseCategoryPieEntries(list, PieTimeRange.LAST_3_MONTHS)
+        assertEquals(1, pie.size)
+        assertEquals("餐饮", pie[0].label)
+    }
+
+    @Test
+    fun pieRange_todayIsAlwaysIncluded() {
+        // 刚记的一笔必须落在任何非 ALL 范围内，避免“今天的消费看不到”
+        val list = listOf(item(cents = 888, isExpense = true, category = "餐饮", timeMillis = System.currentTimeMillis()))
+        PieTimeRange.entries.filter { it != PieTimeRange.ALL }.forEach { range ->
+            val pie = LedgerStats.getExpenseCategoryPieEntries(list, range)
+            assertEquals("范围 $range 应包含今天的记录", 1, pie.size)
+        }
+    }
+
+    @Test
+    fun pieRange_excludesIncomeRegardlessOfRange() {
+        val list = listOf(
+            item(cents = 1000, isExpense = true, category = "餐饮", timeMillis = daysAgo(1)),
+            item(cents = 9999, isExpense = false, category = "工资", timeMillis = daysAgo(1))
+        )
+        val pie = LedgerStats.getExpenseCategoryPieEntries(list, PieTimeRange.LAST_7_DAYS)
+        assertEquals(1, pie.size)
+        assertEquals("餐饮", pie[0].label)
+    }
+
+    @Test
+    fun pieRange_emptyWhenNoRecordsInRange() {
+        val list = listOf(item(cents = 1000, isExpense = true, category = "餐饮", timeMillis = daysAgo(200)))
+        assertTrue(LedgerStats.getExpenseCategoryPieEntries(list, PieTimeRange.LAST_7_DAYS).isEmpty())
+        // 但「全部」范围仍能看到
+        assertEquals(1, LedgerStats.getExpenseCategoryPieEntries(list, PieTimeRange.ALL).size)
+    }
+
+    @Test
+    fun pieRange_containsRecentRecordsAndExcludesOldOnes() {
+        // 3 天前在「近 7 天」内、200 天前不在，验证范围过滤确实生效
+        val list = listOf(
+            item(cents = 1000, isExpense = true, category = "餐饮", timeMillis = daysAgo(3)),
+            item(cents = 5000, isExpense = true, category = "购物", timeMillis = daysAgo(200))
+        )
+        val filtered = LedgerStats.filterExpenseByRange(list, PieTimeRange.LAST_7_DAYS)
+        assertEquals(1, filtered.size)
+        assertEquals("餐饮", filtered[0].categoryName)
+    }
 }

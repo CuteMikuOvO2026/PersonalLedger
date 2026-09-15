@@ -17,6 +17,19 @@ data class StatsRanges(
 )
 
 /**
+ * 报表页饼图的时间范围选项。
+ *
+ * [days] 为回溯天数：`null` 表示不限时间（全部数据），其余表示“包含今天在内的最近 N 天”。
+ * 天数换算与边界对齐统一由 [LedgerStats.pieRangeMillis] 处理，保证与首页统计相同的本地时区口径。
+ */
+enum class PieTimeRange(val days: Int?) {
+    ALL(null),
+    LAST_7_DAYS(7),
+    LAST_MONTH(30),
+    LAST_3_MONTHS(90)
+}
+
+/**
  * 账本统计/报表的纯计算逻辑（不依赖 Android 组件），
  * 供 [MainViewModel] 与 [ReportViewModel] 复用，并便于 JVM 单元测试。
  */
@@ -101,7 +114,8 @@ object LedgerStats {
             weeklyBar = weekly,
             weeklyDates = getWeeklyExpenseDates(),
             summary = getReportSummary(list, budgetValue),
-            hasData = list.isNotEmpty()
+            hasData = list.isNotEmpty(),
+            pieHasData = pie.isNotEmpty()
         )
     }
 
@@ -114,6 +128,50 @@ object LedgerStats {
             }
         }
         return categoryTotals.map { (name, cents) -> PieEntry((cents / 100.0).toFloat(), name) }
+    }
+
+    /**
+     * 按 [range] 过滤出参与饼图统计的支出记录。
+     *
+     * - [PieTimeRange.ALL]：不做时间过滤，返回全部支出记录。
+     * - 其余选项：取「包含今天在内的最近 `range.days` 天」，区间与首页统计一样按本地时区对齐到整日边界。
+     */
+    fun filterExpenseByRange(
+        list: List<LedgerItem>,
+        range: PieTimeRange,
+        nowMillis: Long = System.currentTimeMillis()
+    ): List<LedgerItem> {
+        val expenses = list.filter { it.isExpense }
+        val days = range.days ?: return expenses
+        val startMillis = rangeStartMillis(days, nowMillis)
+        return expenses.filter { it.timeMillis >= startMillis }
+    }
+
+    /**
+     * 饼图数据：[range] 指定时间范围，仅统计该范围内的支出分类占比。
+     *
+     * 默认 [PieTimeRange.ALL] 时与改造前行为完全一致（全部时间数据）。
+     */
+    fun getExpenseCategoryPieEntries(
+        list: List<LedgerItem>,
+        range: PieTimeRange,
+        nowMillis: Long = System.currentTimeMillis()
+    ): List<PieEntry> = getExpenseCategoryPieEntries(filterExpenseByRange(list, range, nowMillis))
+
+    /**
+     * 「包含今天在内的最近 [days] 天」的起始时刻（本地时区当日零点）。
+     *
+     * `days = 1` 即今天零点；`days = 7` 即 6 天前的零点，覆盖含今天在内的 7 个自然日。
+     */
+    private fun rangeStartMillis(days: Int, nowMillis: Long): Long {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = nowMillis
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        cal.add(Calendar.DAY_OF_MONTH, -(days.coerceAtLeast(1) - 1))
+        return cal.timeInMillis
     }
 
     fun getWeeklyExpenseBarEntries(list: List<LedgerItem>): Pair<List<BarEntry>, List<String>> {

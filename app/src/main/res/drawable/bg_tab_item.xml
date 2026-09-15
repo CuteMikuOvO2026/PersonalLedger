@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <corners android:radius="18dp" />
-    <solid android:color="@color/surface_container_low" />
+<!-- 分段控件中单个 Tab 的背景。
+
+     这里必须【完全去掉 ripple】，原因：
+     Widget.PersonalLedger.TabLayout 继承自 Widget.Material3.TabLayout，其父链为
+     Base.Widget.Material3.TabLayout → Widget.MaterialComponents.TabLayout，后者写了
+     `tabUnboundedRipple=true` 与 `tabRippleColor`。TabLayout 在点击后会把该 tab 置为
+     hovered/pressed，ripple 的状态层（白色，实测不透明度约 0.20）会常驻绘制，
+     并以【Tab 的整个矩形】为边界——看起来就像 pill 左上角溢出一块灰色阴影。
+
+     改为纯透明 shape：静态与按压都不再叠加任何白色层，选中态完全由
+     bg_tab_indicator 的实色圆角矩形表达。点击反馈交给 TabLayout 的
+     tabRippleColor（已在样式里显式设为透明）与文字颜色变化承担。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
 </shape>

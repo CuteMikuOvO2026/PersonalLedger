@@ -18,6 +18,11 @@
     <string name="page_indicator">第 %1$d/%2$d 页 · 共 %3$d 条</string>
     <string name="report_title">数据报表</string>
     <string name="report_expense_share">支出分类占比</string>
+    <string name="report_range_all">全部</string>
+    <string name="report_range_7_days">近 7 天</string>
+    <string name="report_range_1_month">近一个月</string>
+    <string name="report_range_3_months">近三个月</string>
+    <string name="report_empty_expense_range">该时间范围内暂无支出</string>
     <string name="report_weekly_expense">最近 7 天每日支出</string>
     <string name="report_weekly_subtitle">观察短期消费波动</string>
     <string name="report_export">导出备份</string>
@@ -57,7 +62,6 @@
     <string name="save">保存</string>
     <string name="edit">编辑</string>
     <string name="delete">删除</string>
-    <string name="edit_entry_title">编辑账单</string>
     <string name="entry_updated">账单已更新</string>
     <string name="enter_amount">请输入金额</string>
     <string name="invalid_amount">金额格式不正确</string>
@@ -71,19 +75,6 @@
     <string name="budget_updated">预算已更新</string>
     <string name="delete_record">删除记录</string>
     <string name="delete_record_confirm">确定要删除这条记录吗？</string>
-    <string name="record_deleted">记录已删除</string>
-    <string name="category_food">餐饮</string>
-    <string name="category_transport">交通</string>
-    <string name="category_shopping">购物</string>
-    <string name="category_entertainment">娱乐</string>
-    <string name="category_medical">医疗</string>
-    <string name="category_education">教育</string>
-    <string name="category_housing">住房</string>
-    <string name="category_other">其他</string>
-    <string name="category_salary">工资</string>
-    <string name="category_bonus">奖金</string>
-    <string name="category_investment">投资</string>
-    <string name="category_side_job">兼职</string>
     <string name="add_category">+ 添加分类</string>
     <string name="add_custom_category">添加自定义分类</string>
     <string name="choose_color">选择颜色</string>
@@ -103,13 +94,9 @@
     <string name="cancel">取消</string>
     <string name="confirm">确定</string>
     <string name="date_filter">日期筛选</string>
-    <string name="date_filter_hint_start">起始日期</string>
-    <string name="date_filter_hint_end">结束日期</string>
-    <string name="date_filter_clear">清除日期</string>
     <string name="export_pdf">导出 PDF</string>
     <string name="export_pdf_success">PDF 导出成功</string>
     <string name="export_pdf_failed">PDF 导出失败</string>
-    <string name="pdf_exporting">正在生成 PDF…</string>
     <string name="pdf_title_expense_share">支出分类占比</string>
     <string name="pdf_title_weekly_expense">最近 7 天每日支出</string>
     <string name="pdf_report_title">轻账 · 数据报表</string>
@@ -130,7 +117,6 @@
     <string name="auto_bookkeeping_grant">去开启通知使用权</string>
     <string name="auto_bookkeeping_need_permission">请先开启「通知使用权」权限</string>
     <string name="auto_bookkeeping_switch">自动记录微信 / 支付宝账单</string>
-    <string name="auto_bookkeeping_open_settings">打开系统设置</string>
     <string name="auto_bookkeeping_enabled_toast">自动记账已开启</string>
     <string name="auto_bookkeeping_disabled_toast">自动记账已关闭</string>
 </resources>

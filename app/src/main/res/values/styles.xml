@@ -41,13 +41,73 @@
         <item name="shapeAppearance">@style/ShapeAppearance.PersonalLedger.Large</item>
     </style>
 
+    <!-- 分段控件式 TabLayout 基础样式：圆角容器 + 圆角指示器（pill），不含高度。
+         各使用处的 `tabIndicatorHeight` 必须等于 TabLayout 的完整高度，
+         pill 的实际高度由 bg_tab_indicator 的 3dp 内缩得出。
+
+         这里有几处必须显式覆盖的坑，全部来自 Material3 / MaterialComponents 的默认值：
+
+         1) `tabIndicatorColor`：Base.Widget.Material3.TabLayout 会把它设为
+            `@macro/m3_comp_primary_navigation_tab_active_indicator_color`（= ?attr/colorPrimary），
+            而 TabIndicatorView 是拿这个值去染 `tabIndicator` 的。不覆盖的话自定义 drawable
+            会被 colorPrimary 顶替，pill 变成亮蓝 primary。故设为 transparent，
+            让颜色完全由 bg_tab_indicator 的 solid 决定。
+
+         2) `tabRippleColor` + `tabUnboundedRipple`：父样式带 `tabUnboundedRipple=true`
+            与 m3_tabs_ripple_color。点击后该 tab 进入 hovered/pressed，白色状态层
+            （实测 alpha≈0.20）会常驻绘制，且以【Tab 的整个矩形】为边界，
+            视觉上就是 pill 旁边多出一块灰色阴影。故 ripple 颜色设为 transparent
+            并把 unbounded 关掉，从源头掐掉这层。
+
+         3) `tabBackground`：配合 bg_tab_item 一起，彻底移除 tab 自身的可绘制背景。
+
+         ⚠️ 4) 【使用处禁止给 TabLayout 设 android:padding】
+            指示器的宽度 = Tab 自身的边界（见 TabIndicatorInterpolator
+            .calculateIndicatorWidthForTab，tabIndicatorFullWidth=true 分支）。
+            而承载 Tab 的 SlidingTabIndicator 会被 TabLayout 的 padding 内缩，
+            并会裁剪超出自身边界的子 View。一旦 TabLayout 有 padding，
+            最后一个（或第一个）Tab 的 pill 圆角就会被裁成直角——
+            实测右角被切掉约 6px，左角仍完整，pill 看起来「被截断」。
+            正确做法：TabLayout 不设 padding，内缩全部交给 bg_tab_indicator 的 layer-list。
+
+         ⚠️ 5) 【必须把 tabPaddingStart/End 压到 0，否则 Tab 会溢出内容区】
+            SlidingTabIndicator.onMeasure 的第一行分支是
+              if (tabGravity == GRAVITY_CENTER /*1*/) { ... }
+              else if (mode != MODE_AUTO /*2*/) return;
+            attrs 里 tabGravity 的取值是 fill=0 / center=1 / start=2，
+            所以 fill + fixed 会直接 return，Tab 完全靠 LinearLayout 的 weight=1 均分宽度。
+            但 TabLayout.TabView.onMeasure 取 max(测量宽度, 内容宽度) 作为最终宽度；
+            一旦「文本宽 + tabPaddingStart + tabPaddingEnd」超过均分宽度，
+            Tab 就会溢出内容区，再被 SlidingTabIndicator 裁掉 —— 又是 pill 圆角被切。
+            tabPaddingStart/End 默认 12dp，在本项目的 4 个中文标签下正好越界；
+            压到 0 后内容宽度远小于均分宽度，溢出消失。
+            （fixed + fill 下文本是居中的，tabPadding 不影响外观。） -->
     <style name="Widget.PersonalLedger.TabLayout" parent="Widget.Material3.TabLayout">
         <item name="tabBackground">@drawable/bg_tab_item</item>
         <item name="tabIndicator">@drawable/bg_tab_indicator</item>
-        <item name="tabIndicatorFullWidth">false</item>
+        <item name="tabIndicatorColor">@android:color/transparent</item>
+        <item name="tabRippleColor">@android:color/transparent</item>
+        <item name="tabUnboundedRipple">false</item>
+        <item name="tabIndicatorFullWidth">true</item>
+        <item name="tabIndicatorGravity">center</item>
+        <item name="tabIndicatorAnimationMode">linear</item>
+        <item name="tabPaddingStart">0dp</item>
+        <item name="tabPaddingEnd">0dp</item>
+        <item name="android:stateListAnimator">@null</item>
         <item name="tabTextAppearance">@style/TextAppearance.PersonalLedger.BodyLarge</item>
         <item name="tabTextColor">@color/text_secondary</item>
         <item name="tabSelectedTextColor">@color/text_primary</item>
+    </style>
+
+    <!-- 报表页饼图时间筛选：tabIndicatorHeight 必须等于 TabLayout 的完整高度（40dp），
+         pill 的实际高度由 bg_tab_indicator 的 3dp 内缩得出：40 − 3 − 3 = 34dp -->
+    <style name="Widget.PersonalLedger.TabLayout.PieRange" parent="Widget.PersonalLedger.TabLayout">
+        <item name="tabIndicatorHeight">40dp</item>
+    </style>
+
+    <!-- 记账弹窗收支切换：完整高度 50dp → pill 50 − 3 − 3 = 44dp -->
+    <style name="Widget.PersonalLedger.TabLayout.EntryType" parent="Widget.PersonalLedger.TabLayout">
+        <item name="tabIndicatorHeight">50dp</item>
     </style>
 
     <style name="Widget.PersonalLedger.OutlinedInput" parent="Widget.Material3.TextInputLayout.OutlinedBox">

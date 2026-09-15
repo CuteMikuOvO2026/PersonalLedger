@@ -81,14 +81,12 @@
 
         <com.google.android.material.tabs.TabLayout
             android:id="@+id/tab_type"
-            style="@style/Widget.PersonalLedger.TabLayout"
+            style="@style/Widget.PersonalLedger.TabLayout.EntryType"
             android:layout_width="match_parent"
             android:layout_height="50dp"
             android:layout_marginTop="16dp"
-            android:background="@color/surface_container_low"
-            android:padding="3dp"
+            android:background="@drawable/bg_tab_container"
             app:tabGravity="fill"
-            app:tabIndicatorHeight="0dp"
             app:tabMode="fixed" />
 
         <TextView

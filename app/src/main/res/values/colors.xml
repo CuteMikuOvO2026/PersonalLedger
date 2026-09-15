@@ -37,7 +37,7 @@
     <color name="surface_container">#FFFFFF</color>
     <color name="surface_container_high">#FFFFFF</color>
     <color name="surface_container_low">#EFF5FA</color>
-    <color name="surface_chip">#DCEBF8</color>
+    <color name="surface_chip">#A5CCEE</color>
     <color name="surface_chip_selected">#2E9BE0</color>
     <color name="text_primary">#1C2830</color>
     <color name="text_secondary">#64747F</color>

@@ -24,6 +24,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import com.example.personalledger.databinding.FragmentReportBinding
+import com.google.android.material.tabs.TabLayout
 import com.github.mikephil.charting.components.Legend
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.BarData
@@ -55,6 +56,14 @@ class ReportFragment : Fragment() {
 
     /** 最近 7 天的完整日期（与柱状图 x 轴一一对应），用于点击某天查看当日记录。 */
     private var lastWeeklyDates: List<String> = emptyList()
+
+    /** 饼图时间筛选选项的顺序，与 [binding.tabPieRange] 的 Tab 位置一一对应。 */
+    private val pieRangeOptions = listOf(
+        PieTimeRange.ALL,
+        PieTimeRange.LAST_7_DAYS,
+        PieTimeRange.LAST_MONTH,
+        PieTimeRange.LAST_3_MONTHS
+    )
 
     private val decimalFormatter = object : ValueFormatter() {
         override fun getFormattedValue(value: Float): String {
@@ -116,11 +125,16 @@ class ReportFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         initCharts()
+        setupPieRangeTabs()
 
         reportViewModel.reportData.observe(viewLifecycleOwner) { report ->
             lastWeeklyDates = report.weeklyDates
-            updatePieChart(report.pieEntries)
             updateBarChart(report.weeklyBar)
+        }
+
+        // 饼图单独观察：切换时间范围时只刷新饼图，柱状图不受影响
+        reportViewModel.pieEntries.observe(viewLifecycleOwner) { entries ->
+            updatePieChart(entries)
         }
 
         // 观察完整历史列表，使其 value 可用，供“点击某天查看当日记录”查询
@@ -128,6 +142,42 @@ class ReportFragment : Fragment() {
 
         setupMenuProvider()
     }
+
+    /** 构建饼图的时间范围筛选 Tab，并把它与 ViewModel 的双向状态绑定。 */
+    private fun setupPieRangeTabs() {
+        if (binding.tabPieRange.tabCount == 0) {
+            pieRangeOptions.forEach { range ->
+                binding.tabPieRange.addTab(binding.tabPieRange.newTab().setText(pieRangeLabel(range)))
+            }
+        }
+
+        binding.tabPieRange.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                val range = pieRangeOptions.getOrNull(tab?.position ?: return) ?: return
+                reportViewModel.setPieTimeRange(range)
+            }
+
+            override fun onTabUnselected(tab: TabLayout.Tab?) = Unit
+            override fun onTabReselected(tab: TabLayout.Tab?) = Unit
+        })
+
+        // 以 ViewModel 为准同步选中项（例如旋转屏幕重建后恢复用户选择）
+        reportViewModel.currentPieRange.observe(viewLifecycleOwner) { range ->
+            val index = pieRangeOptions.indexOf(range)
+            if (index >= 0 && binding.tabPieRange.selectedTabPosition != index) {
+                binding.tabPieRange.getTabAt(index)?.select()
+            }
+        }
+    }
+
+    private fun pieRangeLabel(range: PieTimeRange): String = getString(
+        when (range) {
+            PieTimeRange.ALL -> R.string.report_range_all
+            PieTimeRange.LAST_7_DAYS -> R.string.report_range_7_days
+            PieTimeRange.LAST_MONTH -> R.string.report_range_1_month
+            PieTimeRange.LAST_3_MONTHS -> R.string.report_range_3_months
+        }
+    )
 
     override fun onResume() {
         super.onResume()
@@ -446,10 +496,12 @@ class ReportFragment : Fragment() {
             .show()
     }
 
-    /** 点击饼图的某个分类：显示该分类的所有支出记录。 */
+    /** 点击饼图的某个分类：显示该分类在「当前所选时间范围」内的支出记录，与饼图口径保持一致。 */
     private fun showCategoryRecords(categoryName: String) {
+        val range = reportViewModel.currentPieRange.value ?: PieTimeRange.ALL
         val items = viewModel.historyList.value
-            ?.filter { it.isExpense && it.categoryName == categoryName }
+            ?.let { LedgerStats.filterExpenseByRange(it, range) }
+            ?.filter { it.categoryName == categoryName }
             ?: emptyList()
 
         if (items.isEmpty()) {
@@ -479,6 +531,14 @@ class ReportFragment : Fragment() {
 
     private fun updatePieChart(entries: List<PieEntry>) {
         if (entries.isEmpty()) {
+            // 非「全部」范围下空数据时给出更准确的提示，避免用户误以为账本没有支出
+            val range = reportViewModel.currentPieRange.value ?: PieTimeRange.ALL
+            binding.pieChartExpense.setNoDataText(
+                getString(
+                    if (range == PieTimeRange.ALL) R.string.report_empty_expense
+                    else R.string.report_empty_expense_range
+                )
+            )
             binding.pieChartExpense.clear()
             binding.pieChartExpense.invalidate()
             return

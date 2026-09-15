@@ -1,5 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <corners android:radius="18dp" />
-    <solid android:color="@color/surface_chip" />
-</shape>
+<!-- 分段控件选中态指示器（pill）。
+
+     为什么用 layer-list 做「内缩」，而不是靠 TabLayout 的 android:padding：
+
+     Material 的 TabIndicatorInterpolator.calculateIndicatorWidthForTab() 在
+     tabIndicatorFullWidth=true 时，把指示器边界直接设为 Tab 自身的
+     left/top/right/bottom。而承载 Tab 的 SlidingTabIndicator（LinearLayout）
+     会被 TabLayout 的 padding 内缩，并会裁剪超出自身边界的子 View。
+
+     于是：只要指示器比内容区宽出一点点，最后一个 Tab 的 pill 右角就会被切平，
+     变成一条竖直直线（左角仍是完整圆角）——视觉上就是「pill 被截断 / 没对齐」。
+     实测该溢出约 5.65px，裁剪边界正好落在「容器右缘 − 3dp padding」上。
+
+     这里的水平内缩（4dp）与以下两处改动共同保证 pill 不再被裁：
+       1) TabLayout 不设 android:padding  → 裁剪边界外移到容器边缘（多 3dp 余量）
+       2) 样式中 tabPaddingStart/End = 0dp → Tab 不再溢出内容区（消除溢出本身）
+     4dp 内缩则作为兜底余量，确保即使仍有少量溢出也不会切到圆角。
+
+     注意：内缩后 pill 的实际高度 = tabIndicatorHeight − 上下各 3dp，
+     因此样式里的 tabIndicatorHeight 必须写成 TabLayout 的完整高度
+     （报表页 40dp / 记账弹窗 50dp），而不是 pill 的目标高度。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:bottom="3dp"
+        android:left="4dp"
+        android:right="4dp"
+        android:top="3dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="18dp" />
+            <solid android:color="@color/surface_chip" />
+        </shape>
+    </item>
+</layer-list>
