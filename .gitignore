@@ -9,6 +9,9 @@
 .externalNativeBuild
 .cxx
 
+# AI assistant workspace data (local only)
+/.workbuddy-ai
+
 # Build outputs
 /build
 /app/release
