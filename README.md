@@ -14,7 +14,7 @@
 - **饼图时间筛选**：饼图上方提供**全部 / 近 7 天 / 近一个月 / 近三个月**四个时间范围选项，默认显示全部数据；切换后饼图实时刷新为对应时间范围内的支出分布，点击饼图分类查看明细时也保持同一时间口径。
 - **分类配色**：内置各分类（餐饮 / 交通 / 购物 / 娱乐 / 医疗 / 教育 / 住房 / 工资 / 奖金 / 投资 / 兼职等）分配不同柔和颜色；**新增自定义分类时可从 12 色板中自选颜色**，并持久化保存。
 - **主题模式**：顶栏「外观」可切换**浅色 / 深色 / 跟随系统**，实时生效并记忆；深色模式下所有界面（含首页月度总结卡）均已适配。同处可开启 **Material You 动态取色**（跟随壁纸配色，需 Android 12+，默认关闭以保留本应用的固定天蓝配色）。
-- **无障碍**：**尊重系统「字体大小」设置**（缩放上限 1.3×，原因见下文）。
+- **字号**：应用内字号统一按 1.0× 固定，**不跟随系统「字体大小」缩放**（原因见 `MainActivity.attachBaseContext` 的注释）。
 - **数据导出**：导出 CSV（带 UTF-8 BOM，兼容 Excel）、导出 PDF、JSON 备份导出与导入恢复。
 - **CSV 导入**：可导入本应用导出的 CSV，也可导入其他记账 App 的 CSV——解析后提供**列映射确认**（时间 / 类型 / 分类 / 金额 / 备注），导入为**追加**而非覆盖，无法解析的行会跳过并告知数量。
 - **自动本地备份**：可选开启，每天自动把完整备份写入应用专属目录，只保留最近 5 份，并可从列表中选择某一份恢复；全程不涉及网络。
@@ -42,7 +42,7 @@ Kotlin · AndroidX (Activity / Fragment / Lifecycle ViewModel / LiveData) · Roo
 单模块工程，入口模块为 `app`，遵循 ViewModel + Repository 分层：
 
 - `App`（`Application`）：启动时**非阻塞**地应用已保存的主题模式，避免主线程卡顿；按开关状态注册 Material You 动态取色（用 `precondition` 表达开关，切换后只需重建 Activity 即可生效），并同步两个定时任务的排期。
-- `MainActivity`：主导航容器，通过底部导航在「记账（HomeFragment）」与「报表（ReportFragment）」间切换；`attachBaseContext` 只锁定中文文案，**字体缩放交给系统**（上限 1.3×，原因见 `MainActivity.MAX_FONT_SCALE` 处的注释）。
+- `MainActivity`：主导航容器，通过底部导航在「记账（HomeFragment）」与「报表（ReportFragment）」间切换；`attachBaseContext` 锁定中文文案并把 `fontScale` 固定为 **1.0×**（原因见该方法内的注释）。
 - `MainViewModel`（`AndroidViewModel`）：统一管理账本数据、首页统计、**预算规则与执行情况**、**首页洞察**、筛选状态、**首页分页状态**、分类、自动记账开关与主题模式，通过 LiveData 驱动界面刷新；首页统计由 Room 聚合得出（收入、支出**各发一条按方向 + 本月区间的范围查询**，时间条件放在 `WHERE` 里以便走索引，再由 `LedgerStats.buildHomeTotals` 组装），首页列表只读取当前页；启动时监听自定义分类并将配色注册到 `CategoryColors`。
 - `ReportViewModel`（`AndroidViewModel`）：报表页专用，图表与摘要**全部由 Room 聚合得出**（`GROUP BY categoryName` / 7 个 `SUM(CASE WHEN ...)` 分桶 / 全表收支合计），不再读取整表；点击某天或某分类时再按需查询明细。**饼图时间范围**由独立的 `pieTimeRange` 状态流驱动，与柱状图解耦；「今天」锚点（`dayAnchor`）在 `onResume` 刷新，保证跨零点后两个图表的窗口一起前移。
 - `LedgerStats`：统计与报表的纯函数工具，分两类职责——**时间窗口**（`PieTimeRange` 枚举、`currentStatsRanges`、`todayRange` / `monthRange` / `weekRange` / `lastMonthRange`、`weeklyDayRanges`、`rangeStartMillisOrNull`、`startOfDay`、`periodKey`，统一按本地时区对齐自然边界）与**聚合结果换算**（`buildHomeTotals` / `buildHomeStats` / `buildPieEntries` / `buildWeeklyBarEntries` / `buildReportSummary`）。另有若干 `getXxx(list)` 形式的内存版实现，仅用于与数据库聚合结果**对拍**（见 `LedgerStatsAggregationTest`），保证两条路径数字一致。
