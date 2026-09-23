@@ -286,4 +286,63 @@ class CsvLedgerParserTest {
         assertEquals("其他", result.items[0].categoryName)
         assertEquals("", result.items[0].note)
     }
+
+    // ---------- 单元格转义：公式注入防护 ----------
+
+    @Test
+    fun escapeCell_neutralizesFormulaPrefixes() {
+        // 备注可能来自通知自动记账抓取的第三方文本；以这些字符开头会被 Excel / WPS 当公式执行
+        listOf("=1+1", "+1", "-1", "@SUM(A1)", "\tcmd").forEach { raw ->
+            val escaped = CsvLedgerParser.escapeCell(raw)
+            assertEquals("应加单引号中和：$raw", "'", escaped.substring(0, 1))
+        }
+    }
+
+    @Test
+    fun escapeCell_leavesOrdinaryTextAlone() {
+        // 普通文本不能被平白加上前缀
+        assertEquals("麦当劳", CsvLedgerParser.escapeCell("麦当劳"))
+        assertEquals("", CsvLedgerParser.escapeCell(""))
+        assertEquals("12.50", CsvLedgerParser.escapeCell("12.50"))
+        // 公式前缀只认「首个字符」，中间的等号不影响
+        assertEquals("合计=25", CsvLedgerParser.escapeCell("合计=25"))
+    }
+
+    @Test
+    fun escapeCell_quotesCommasQuotesAndNewlines() {
+        // 分类名由用户自定义，可能含逗号 —— 不加引号会把一行拆成两列
+        assertEquals("\"餐饮,外卖\"", CsvLedgerParser.escapeCell("餐饮,外卖"))
+        // 引号按 CSV 规范翻倍
+        assertEquals("\"说\"\"好\"\"\"", CsvLedgerParser.escapeCell("说\"好\""))
+        assertEquals("\"第一行\n第二行\"", CsvLedgerParser.escapeCell("第一行\n第二行"))
+    }
+
+    @Test
+    fun unescapeCell_reversesTheGuard() {
+        listOf("=1+1", "+1", "-1", "@SUM(A1)").forEach { raw ->
+            assertEquals(raw, CsvLedgerParser.unescapeCell(CsvLedgerParser.escapeCell(raw)))
+        }
+        // 不是中和符的内容一律不动
+        assertEquals("麦当劳", CsvLedgerParser.unescapeCell("麦当劳"))
+        assertEquals("'", CsvLedgerParser.unescapeCell("'"))
+        assertEquals("'abc", CsvLedgerParser.unescapeCell("'abc"))
+    }
+
+    @Test
+    fun exportThenImport_keepsNoteAndCategoryUnchanged() {
+        // 端到端：导出的一行再导入回来，备注与分类必须一字不差
+        val note = "=SUM(A1:A9) 打车"
+        val category = "自定义,分类"
+
+        val csvLine = listOf("2026-09-16 12:30", "支出", category, "25.50", note)
+            .joinToString(",") { CsvLedgerParser.escapeCell(it) }
+
+        val rows = CsvLedgerParser.parse(csvLine)
+        val result = CsvLedgerParser.toLedgerItems(rows, CsvColumnMapping(0, 1, 2, 3, 4))
+
+        assertEquals(1, result.items.size)
+        assertEquals(note, result.items[0].note)
+        assertEquals(category, result.items[0].categoryName)
+        assertEquals(2550L, result.items[0].amountCents)
+    }
 }

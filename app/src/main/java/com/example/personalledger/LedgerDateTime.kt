@@ -77,4 +77,38 @@ object LedgerDateTime {
             )
         }.timeInMillis
     }
+
+    // ---------- 日期区间筛选：把「某一天」换算成本地时间戳的上下界 ----------
+
+    /**
+     * 选择器的 UTC 零点 → 该日在**本地时区的零点**。
+     *
+     * 用作筛选区间的**下界**（DAO 里是 `timeMillis >= dateFrom`）。
+     */
+    fun dayStartFromPicker(utcDateMillis: Long, zone: TimeZone = TimeZone.getDefault()): Long =
+        fromPicker(PickerDateTime(utcDateMillis, 0, 0), zone)
+
+    /**
+     * 选择器的 UTC 零点 → 该日在**本地时区的最后一毫秒**。
+     *
+     * 用作筛选区间的**上界**。DAO 里的比较是 `timeMillis <= dateTo`（闭区间），
+     * 所以上界必须是 23:59:59.999 而不是次日零点，否则结束日当天的记录会被整日漏掉。
+     *
+     * 用「当天零点 + 1 天 − 1 毫秒」而不是写死 23:59，是为了顺带兼容夏令时地区
+     * （那里的一天可能是 23 或 25 小时）。
+     */
+    fun dayEndFromPicker(utcDateMillis: Long, zone: TimeZone = TimeZone.getDefault()): Long =
+        Calendar.getInstance(zone).apply {
+            timeInMillis = dayStartFromPicker(utcDateMillis, zone)
+            add(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MILLISECOND, -1)
+        }.timeInMillis
+
+    /**
+     * 本地时间戳 → 选择器需要的 UTC 零点，用于把已选区间**回显**到选择器上。
+     *
+     * 没有它就会出现「筛完再打开筛选弹窗，日期显示成前一天」。
+     */
+    fun dayToPicker(localMillis: Long, zone: TimeZone = TimeZone.getDefault()): Long =
+        toPicker(localMillis, zone).utcDateMillis
 }

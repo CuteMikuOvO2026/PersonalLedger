@@ -132,6 +132,46 @@ object CsvLedgerParser {
     /** 首行是否像表头（能被识别出时间与金额列即认为是表头，否则按纯数据行处理）。 */
     fun looksLikeHeader(row: List<String>): Boolean = suggestMapping(row) != null
 
+    // ---------- 单元格转义（导出用）与还原（导入用） ----------
+
+    /**
+     * 会被 Excel / WPS 当成**公式**执行的首字符。
+     *
+     * 备注可能来自通知自动记账抓取的第三方文本，不是纯用户输入，因此导出时必须中和。
+     */
+    private const val FORMULA_PREFIXES = "=+-@\t\r"
+
+    /** 中和用的前缀（单引号）——表格软件据此把该单元格当纯文本。 */
+    private const val FORMULA_GUARD = '\''
+
+    /**
+     * 把一个值转成 CSV 单元格。
+     *
+     * 两件事：① 含逗号 / 引号 / 换行时用引号包裹并把 `"` 转义成 `""`；
+     * ② 以 [FORMULA_PREFIXES] 开头时加 [FORMULA_GUARD] 中和，避免被当公式执行。
+     */
+    fun escapeCell(value: String): String {
+        val guarded = if (value.isNotEmpty() && value[0] in FORMULA_PREFIXES) {
+            FORMULA_GUARD + value
+        } else {
+            value
+        }
+        val needsQuoting = guarded.any { it == ',' || it == '"' || it == '\n' || it == '\r' }
+        return if (needsQuoting) "\"${guarded.replace("\"", "\"\"")}\"" else guarded
+    }
+
+    /**
+     * [escapeCell] 的逆操作：去掉导出时加上的中和符。
+     *
+     * 有了它，「导出再导入」不会给备注平白多出一个单引号。
+     */
+    fun unescapeCell(value: String): String =
+        if (value.length >= 2 && value[0] == FORMULA_GUARD && value[1] in FORMULA_PREFIXES) {
+            value.substring(1)
+        } else {
+            value
+        }
+
     /**
      * 按 [mapping] 把数据行转换成账目。
      *
@@ -155,16 +195,18 @@ object CsvLedgerParser {
             }
 
             val rawAmount = row.getOrNull(mapping.amountIndex)
+            // 导出时会给可能被当公式的前缀加中和符，这里还原，保证「导出再导入」内容不变
             val category = row.getOrNull(mapping.categoryIndex)
                 ?.trim()
                 .orEmpty()
+                .let { unescapeCell(it) }
                 .ifEmpty { defaultCategory }
 
             items.add(
                 LedgerItem(
                     id = java.util.UUID.randomUUID().toString(),
                     amountCents = amountCents,
-                    note = row.getOrNull(mapping.noteIndex)?.trim().orEmpty(),
+                    note = unescapeCell(row.getOrNull(mapping.noteIndex)?.trim().orEmpty()),
                     timeMillis = timeMillis,
                     isExpense = parseIsExpense(row.getOrNull(mapping.typeIndex).orEmpty(), rawAmount),
                     categoryName = category,

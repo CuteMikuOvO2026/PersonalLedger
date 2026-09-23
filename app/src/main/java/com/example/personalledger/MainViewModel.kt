@@ -307,13 +307,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** 当前页的记录（每页最多 [LedgerPaging.PAGE_SIZE] 条）。 */
     @OptIn(ExperimentalCoroutinesApi::class)
     val filteredHistory: LiveData<List<LedgerItem>> =
-        filterState.flatMapLatest { state ->
-            repository.queryFilteredPage(
-                query = state.toQuery(),
-                limit = LedgerPaging.PAGE_SIZE,
-                offset = LedgerPaging.offsetOf(state.page)
-            )
-        }.flowOn(Dispatchers.Default).distinctUntilChanged().asLiveData()
+        // 与自定义分类一起组合：列表渲染时按分类名**同步**读取 CategoryColors 的全局色表，
+        // 而色表是在分类流里**异步**注册的。若不随分类变化重新发射，冷启动时只要列表
+        // 先于分类加载完成，自定义分类就会一直显示成兜底灰（直到下一次数据变化才自愈）。
+        // 这里刻意不做 distinctUntilChanged：重新发射同一份列表正是为了让 ViewHolder
+        // 重新绑定、重新解析颜色（submitList 走的是 notifyDataSetChanged）。
+        combine(filterState, repository.customCategories) { state, _ -> state }
+            .flatMapLatest { state ->
+                repository.queryFilteredPage(
+                    query = state.toQuery(),
+                    limit = LedgerPaging.PAGE_SIZE,
+                    offset = LedgerPaging.offsetOf(state.page)
+                )
+            }
+            .flowOn(Dispatchers.Default).asLiveData()
 
     /** 分页信息（当前页 / 总页数 / 总条数），供首页页码栏展示。 */
     val pageInfo: LiveData<LedgerPageInfo> =

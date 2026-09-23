@@ -351,8 +351,12 @@ class LedgerRepository(context: Context) {
         sb.appendLine("时间,类型,分类,金额,备注")
         getAll().forEach { item ->
             val type = if (item.isExpense) "支出" else "收入"
-            val escapedNote = item.note.replace("\"", "\"\"")
-            sb.appendLine("${item.time},$type,${item.categoryName},\"${item.amount}\",\"$escapedNote\"")
+            // 每个单元格都过一遍转义：分类名由用户自定义、可能含逗号；
+            // 备注可能以 = / + / - / @ 开头（会被 Excel / WPS 当公式执行），必须中和。
+            sb.appendLine(
+                listOf(item.time, type, item.categoryName, item.amount, item.note)
+                    .joinToString(",") { CsvLedgerParser.escapeCell(it) }
+            )
         }
         return sb.toString()
     }

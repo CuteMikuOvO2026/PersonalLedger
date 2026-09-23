@@ -316,19 +316,36 @@ class HomeFragment : Fragment() {
         binding.textAmountFilter.setTextColor(color)
     }
 
+    /**
+     * 日期区间筛选。
+     *
+     * [MaterialDatePicker] 给出的是 **UTC 零点**毫秒，而 DAO 里的比较是
+     * `timeMillis >= dateFrom AND timeMillis <= dateTo`（本地时间戳、闭区间）。
+     * 直接透传会在东八区漏掉起始日 00:00–08:00 与结束日 08:00 之后的记录，
+     * 因此这里必须经 [LedgerDateTime] 换算：下界取当日本地零点、上界取当日最后一毫秒。
+     */
     private fun showDateFilterDialog() {
         val (from, to) = viewModel.currentDateRange()
         val rangePicker = MaterialDatePicker.Builder.dateRangePicker()
             .setTitleText(getString(R.string.date_filter))
             .apply {
+                // 已选区间要换算回 UTC 零点再回显，否则会显示成前一天
                 if (from != null && to != null) {
-                    setSelection(androidx.core.util.Pair(from, to))
+                    setSelection(
+                        androidx.core.util.Pair(
+                            LedgerDateTime.dayToPicker(from),
+                            LedgerDateTime.dayToPicker(to)
+                        )
+                    )
                 }
             }
             .build()
 
         rangePicker.addOnPositiveButtonClickListener { selection ->
-            viewModel.setDateRange(selection.first, selection.second)
+            viewModel.setDateRange(
+                LedgerDateTime.dayStartFromPicker(selection.first),
+                LedgerDateTime.dayEndFromPicker(selection.second)
+            )
             updateDateFilterTint()
         }
 

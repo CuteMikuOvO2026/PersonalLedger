@@ -2,6 +2,7 @@ package com.example.personalledger
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
 import java.util.TimeZone
@@ -33,6 +34,9 @@ class LedgerDateTimeTest {
 
     private fun dayOfMonthInUtc(millis: Long): Int =
         Calendar.getInstance(utc).apply { timeInMillis = millis }.get(Calendar.DAY_OF_MONTH)
+
+    private fun localCalendar(millis: Long): Calendar =
+        Calendar.getInstance(zone).apply { timeInMillis = millis }
 
     // ---------- 核心：UTC 日期 vs 本地时间戳 ----------
 
@@ -144,5 +148,81 @@ class LedgerDateTimeTest {
             }.timeInMillis,
             LedgerDateTime.fromPicker(picker, zone)
         )
+    }
+
+    // ---------- 日期区间筛选：下界取当日零点、上界取当日最后一毫秒 ----------
+
+    @Test
+    fun dayStartFromPicker_isLocalMidnightOfThePickedDay() {
+        // 选择器给的是 3 月 1 日的 UTC 零点；在东八区它等于本地 08:00，
+        // 直接当本地时间戳用会丢掉当天 00:00–08:00 的记录
+        assertEquals(
+            localMillis(2026, 3, 1, 0, 0),
+            LedgerDateTime.dayStartFromPicker(utcMidnight(2026, 3, 1), zone)
+        )
+    }
+
+    @Test
+    fun dayEndFromPicker_isLastMillisOfThePickedDay() {
+        val end = LedgerDateTime.dayEndFromPicker(utcMidnight(2026, 3, 1), zone)
+
+        // DAO 用的是闭区间 `timeMillis <= dateTo`，上界必须是 23:59:59.999
+        val lastMillisOfDay = localCalendar(localMillis(2026, 3, 2, 0, 0)).apply {
+            add(Calendar.MILLISECOND, -1)
+        }.timeInMillis
+        assertEquals(lastMillisOfDay, end)
+
+        assertTrue("结束日 23:59 的记录应落在区间内", localMillis(2026, 3, 1, 23, 59) <= end)
+        assertTrue("次日零点应落在区间外", localMillis(2026, 3, 2, 0, 0) > end)
+    }
+
+    @Test
+    fun naivePassthroughWouldDropRecordsOnBothEnds() {
+        // 反例取证：把选择器的 UTC 零点直接当区间端点，会漏掉哪些记录
+        val naiveFrom = utcMidnight(2026, 3, 1)
+        val naiveTo = utcMidnight(2026, 3, 1)
+
+        val earlyOnStartDay = localMillis(2026, 3, 1, 0, 30)
+        val lateOnEndDay = localMillis(2026, 3, 1, 9, 0)
+
+        assertTrue("起始日 00:30 会被漏掉", earlyOnStartDay < naiveFrom)
+        assertTrue("结束日 09:00 会被漏掉", lateOnEndDay > naiveTo)
+
+        // 修正后两者都落在区间内
+        val fixedFrom = LedgerDateTime.dayStartFromPicker(utcMidnight(2026, 3, 1), zone)
+        val fixedTo = LedgerDateTime.dayEndFromPicker(utcMidnight(2026, 3, 1), zone)
+        assertTrue(earlyOnStartDay >= fixedFrom && earlyOnStartDay <= fixedTo)
+        assertTrue(lateOnEndDay >= fixedFrom && lateOnEndDay <= fixedTo)
+    }
+
+    @Test
+    fun dayToPicker_roundTripsForFilterEcho() {
+        // 筛完再打开弹窗，日期必须还是原来那天，否则会显示成前一天
+        val samples = listOf(
+            localMillis(2026, 3, 1, 0, 0),
+            localMillis(2026, 12, 31, 0, 0),
+            localMillis(2024, 2, 29, 0, 0) // 闰日
+        )
+        samples.forEach { local ->
+            val echoed = LedgerDateTime.dayStartFromPicker(
+                LedgerDateTime.dayToPicker(local, zone),
+                zone
+            )
+            assertEquals("回显后应回到同一天的零点", local, echoed)
+        }
+    }
+
+    @Test
+    fun dayEnd_doesNotOverflowMonthOrYearBoundary() {
+        val februaryEnd = localCalendar(LedgerDateTime.dayEndFromPicker(utcMidnight(2026, 2, 28), zone))
+        val yearEnd = localCalendar(LedgerDateTime.dayEndFromPicker(utcMidnight(2026, 12, 31), zone))
+
+        assertEquals(2, februaryEnd.get(Calendar.MONTH) + 1)
+        assertEquals(28, februaryEnd.get(Calendar.DAY_OF_MONTH))
+        assertEquals(23, februaryEnd.get(Calendar.HOUR_OF_DAY))
+
+        assertEquals(2026, yearEnd.get(Calendar.YEAR))
+        assertEquals(12, yearEnd.get(Calendar.MONTH) + 1)
+        assertEquals(31, yearEnd.get(Calendar.DAY_OF_MONTH))
     }
 }
