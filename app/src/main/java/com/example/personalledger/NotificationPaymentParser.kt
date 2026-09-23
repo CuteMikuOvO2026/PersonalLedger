@@ -59,12 +59,19 @@ object NotificationPaymentParser {
      * 这里**刻意保留**了同一语义组内的重叠词（如「支付」「已支付」「支付成功」）：
      * 它们都属于同一方向，重复命中只会放大该方向的票数，不会把方向带偏。
      *
-     * [INCOME_WORDS] 必须覆盖 [AutoBookkeepingRules.incomeRules] 的语义范围，
+     * [INCOME_WORDS] 需要覆盖 [AutoBookkeepingRules.incomeRules] 的关键词，
      * 否则会出现「被识别为收入分类、却被判成支出方向」的自相矛盾（如「工资代发」）。
+     * 唯一例外见 [AMBIGUOUS_INVESTMENT_KEYWORDS]，该不变式由
+     * `NotificationPaymentParserTest.incomeWordListCoversIncomeRules` 守护。
+     *
+     * 注意区分两类词：**方向词**（钱往哪走：扣款 / 到账）和**标的词**（买了什么：股票 / 基金）。
+     * 只有前者能进这里——见 [AMBIGUOUS_INVESTMENT_KEYWORDS]。
      */
     private val EXPENSE_WORDS = listOf(
         "支付", "付款", "支出", "消费", "已付款", "付款成功",
-        "成功付款", "已支付", "支付成功", "转账支出", "扣款"
+        "成功付款", "已支付", "支付成功", "转账支出", "扣款",
+        // 投资买入方向：与下方的「赎回 / 卖出 / 分红」成对，避免标的词左右方向
+        "买入", "申购", "定投"
     )
 
     private val INCOME_WORDS = listOf(
@@ -72,11 +79,27 @@ object NotificationPaymentParser {
         "收款", "到账", "入账", "收到", "已收款", "收入", "进账", "红包", "转入",
         // 退款类：钱回来算收入
         "退款", "退回",
-        // 薪资 / 奖励类：与 incomeRules 的「工资」「奖金」等分类保持同步
-        "工资", "薪资", "代发", "奖金", "奖励",
-        // 投资 / 副业类
-        "收益", "利息", "稿费"
+        // 薪资 / 奖励类：与 incomeRules 的「工资」「奖金」对齐（「薪」覆盖「薪水」这类说法）
+        "工资", "薪资", "薪", "代发", "奖金", "奖励",
+        // 投资类：只收方向明确的词，标的词见 AMBIGUOUS_INVESTMENT_KEYWORDS
+        "收益", "利息", "赎回", "卖出", "分红",
+        // 副业类：与 incomeRules 的「兼职」对齐
+        "稿费", "兼职", "劳务", "外包"
     )
+
+    /**
+     * 刻意**不进** [INCOME_WORDS] 的 `incomeRules` 关键词。
+     *
+     * 它们描述的是**投资标的**而不是**资金流向**。用它们做分类是安全的（分类只在方向已判定为
+     * 收入之后才跑），但拿来投票会把方向带反——「股票买入」「基金申购」同样含这两个字，
+     * 却是不折不扣的支出；而把「买入」误判成收入的代价远大于漏记一笔。
+     *
+     * 这类通知的方向改由**方向词**兜住，见 [EXPENSE_WORDS] / [INCOME_WORDS] 里的
+     * 买入 / 申购 / 定投 / 赎回 / 卖出 / 分红。该取舍由 `NotificationPaymentParserTest`
+     * 的 `incomeWordListCoversIncomeRules` 与 `ambiguousInvestmentKeywordsDoNotVoteIncome`
+     * 两个用例同时锁住。
+     */
+    val AMBIGUOUS_INVESTMENT_KEYWORDS = listOf("理财", "基金", "股票")
 
     /** 抹掉来源标签，只保留可能承载交易语义的正文。 */
     private fun stripSourceLabels(text: String): String =

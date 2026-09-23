@@ -121,7 +121,110 @@ class NotificationPaymentParserTest {
         assertEquals("工资", parsed.categoryName)
     }
 
+    // ---------- 词表同步守护 ----------
+
+    @Test
+    fun incomeWordListCoversIncomeRules() {
+        // 不变式：incomeRules 的关键词必须能在方向投票里投出「收入」，否则会出现
+        // 「分类判收入、方向判支出」的自相矛盾——历史上「工资代发」就是这样：
+        // 一边被 incomeRules 当作收入分类，一边被判成支出方向。
+        // 唯一例外是投资标的词，见下一个用例。
+        val uncovered = AutoBookkeepingRules.incomeRules
+            .flatMap { rule -> rule.keywords }
+            .filterNot { it in NotificationPaymentParser.AMBIGUOUS_INVESTMENT_KEYWORDS }
+            .filter { keyword -> NotificationPaymentParser.detectDirection("$keyword ￥100.00") }
+
+        assertEquals(
+            "以下 incomeRules 关键词会被判成支出，需同步进 INCOME_WORDS：$uncovered",
+            emptyList<String>(),
+            uncovered
+        )
+    }
+
+    @Test
+    fun ambiguousInvestmentKeywordsDoNotVoteIncome() {
+        // 投资标的词（理财 / 基金 / 股票）刻意不进方向词表：它们回答的是「买了什么」，
+        // 而不是「钱往哪走」。若「股票」能投收入票，「股票买入」就会被记成一笔收入。
+        for (keyword in NotificationPaymentParser.AMBIGUOUS_INVESTMENT_KEYWORDS) {
+            assertTrue(
+                "「$keyword」不应单独投出收入票",
+                NotificationPaymentParser.detectDirection("$keyword ￥100.00")
+            )
+        }
+    }
+
+    @Test
+    fun detectDirection_investmentDirectionWordsDecideDirection() {
+        // 标的词不投票，方向交给方向词：买入 / 申购 / 定投 是支出，赎回 / 卖出 / 分红 是收入
+        assertTrue(
+            "股票买入应判为支出",
+            NotificationPaymentParser.detectDirection("支付宝\n股票买入 ￥5000.00")
+        )
+        assertTrue(
+            "基金申购应判为支出",
+            NotificationPaymentParser.detectDirection("支付宝\n基金申购 ￥1000.00")
+        )
+        assertTrue(
+            "基金定投应判为支出",
+            NotificationPaymentParser.detectDirection("支付宝\n基金定投扣款 ￥1000.00")
+        )
+        assertFalse(
+            "基金赎回应判为收入",
+            NotificationPaymentParser.detectDirection("支付宝\n基金赎回 ￥1000.00")
+        )
+        assertFalse(
+            "股票分红应判为收入",
+            NotificationPaymentParser.detectDirection("微信支付\n股票分红 ￥300.00")
+        )
+    }
+
+    @Test
+    fun detectDirection_sideJobKeywordsAreIncome() {
+        // incomeRules 的「兼职」关键词此前未进方向词表：转账类通知没有「到账」等收款词，
+        // 会因 0:0 平票被兜底判成支出
+        assertFalse(
+            "兼职应判为收入",
+            NotificationPaymentParser.detectDirection("微信转账\n兼职 ￥300.00")
+        )
+        assertFalse(
+            "劳务应判为收入",
+            NotificationPaymentParser.detectDirection("微信转账\n劳务费 ￥800.00")
+        )
+        assertFalse(
+            "外包应判为收入",
+            NotificationPaymentParser.detectDirection("微信转账\n外包 ￥1200.00")
+        )
+    }
+
+    @Test
+    fun detectDirection_salaryShortFormIsIncome() {
+        // incomeRules 的「薪」关键词此前未进方向词表，「薪水」这类说法会漏判
+        assertFalse(
+            "薪水应判为收入",
+            NotificationPaymentParser.detectDirection("支付宝\n薪水 ￥9000.00")
+        )
+    }
+
+    @Test
+    fun detectDirection_expenseSignalWinsOnTie() {
+        // 反例：收入词与支出词同时出现且票数相同时，仍按支出兜底（刻意的保守取向）
+        assertTrue(
+            "「收款失败，已扣款」应判为支出",
+            NotificationPaymentParser.detectDirection("微信支付\n收款失败，已扣款 ￥100.00")
+        )
+    }
+
     // ---------- 分类匹配 ----------
+
+    @Test
+    fun parse_fundRedemptionMapsToInvestmentCategory() {
+        // 「基金」只在 incomeRules 里做分类用，方向靠「赎回」判定，两者配合才得出「投资 / 收入」
+        val parsed = NotificationPaymentParser.parse("支付宝\n基金赎回 ￥1000.00")
+
+        assertEquals(100000L, parsed?.amountCents)
+        assertFalse("基金赎回不能记成支出", parsed!!.isExpense)
+        assertEquals("投资", parsed.categoryName)
+    }
 
     @Test
     fun parse_mapsMerchantKeywordToCategory() {
