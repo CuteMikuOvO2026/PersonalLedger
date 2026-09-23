@@ -19,10 +19,10 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 /**
- * 仅负责轻量设置的持久化：月预算、自定义分类。
+ * 仅负责轻量设置的持久化：自定义分类、自动记账开关、主题模式。
  *
- * 账本条目历史已迁移到 Room（见 [LedgerRepository]），这里仍保留旧的
- * DataStore 历史 key，仅用于一次性迁移读取。
+ * 账本条目已迁移到 Room（见 [LedgerRepository]），预算也已迁移到 Room 的 `budgets` 表
+ * （见 [BudgetEntity]）；这里保留旧的预算 key，仅用于一次性搬迁读取。
  */
 class DataStoreManager(private val context: Context) {
 
@@ -41,8 +41,24 @@ class DataStoreManager(private val context: Context) {
         val LEGACY_HISTORY_LIST_KEY = stringPreferencesKey("ledger_history_list")
     }
 
-    val budgetFlow: Flow<Double> = context.dataStore.data.map { preferences ->
-        preferences[BUDGET_KEY] ?: preferences[LEGACY_BUDGET_KEY]?.toDouble() ?: 5000.0
+    /**
+     * 读取旧版「月度总预算」的原始值，**未设置过时返回 null**。
+     *
+     * 这里刻意不给兜底默认值：预算已经迁移到 Room 的 `budgets` 表
+     * （见 [BudgetEntity]），本方法只在一次性搬迁时用来判断
+     * 「用户当年是否真的设置过预算」，不能凭默认值凭空造出一条预算。
+     */
+    suspend fun readLegacyBudget(): Double? {
+        val preferences = context.dataStore.data.first()
+        return preferences[BUDGET_KEY] ?: preferences[LEGACY_BUDGET_KEY]?.toDouble()
+    }
+
+    /** 搬迁完成后清掉旧值，避免用户删光预算后又被旧值「复活」。 */
+    suspend fun clearLegacyBudget() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(BUDGET_KEY)
+            preferences.remove(LEGACY_BUDGET_KEY)
+        }
     }
 
     val customCategoriesFlow: Flow<List<CategoryItem>> = context.dataStore.data.map { preferences ->
@@ -56,13 +72,6 @@ class DataStoreManager(private val context: Context) {
             } catch (_: Exception) {
                 emptyList()
             }
-        }
-    }
-
-    suspend fun saveBudget(budget: Double) {
-        context.dataStore.edit { preferences ->
-            preferences[BUDGET_KEY] = budget
-            preferences.remove(LEGACY_BUDGET_KEY)
         }
     }
 

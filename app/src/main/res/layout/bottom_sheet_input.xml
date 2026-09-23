@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/bottom_sheet_card"
     style="@style/Widget.Material3.CardView.Elevated"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    app:cardBackgroundColor="@color/surface_container"
+    app:cardBackgroundColor="?attr/colorSurfaceContainer"
     app:cardCornerRadius="24dp"
     app:cardElevation="8dp"
     app:strokeWidth="0dp">
@@ -31,7 +32,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/add_entry_title"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/colorOnSurface"
                 android:textSize="20sp"
                 android:textStyle="bold" />
 
@@ -43,7 +44,7 @@
                 android:contentDescription="@string/close"
                 android:padding="8dp"
                 android:src="@android:drawable/ic_menu_close_clear_cancel"
-                app:tint="@color/text_secondary" />
+                app:tint="?attr/colorOnSurfaceVariant" />
         </LinearLayout>
 
         <LinearLayout
@@ -59,7 +60,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:text="@string/currency_symbol"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/colorOnSurface"
                 android:textSize="28sp"
                 android:textStyle="bold" />
 
@@ -73,7 +74,7 @@
                 android:hint="0.00"
                 android:imeOptions="actionNext"
                 android:inputType="numberDecimal"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/colorOnSurface"
                 android:textColorHint="@color/text_tertiary"
                 android:textSize="32sp"
                 android:textStyle="bold" />
@@ -94,7 +95,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
             android:text="@string/choose_category"
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="13sp" />
 
         <androidx.recyclerview.widget.RecyclerView
@@ -114,7 +115,7 @@
             android:paddingHorizontal="12dp"
             android:paddingVertical="6dp"
             android:text="@string/add_category"
-            android:textColor="@color/md_theme_primary"
+            android:textColor="?attr/colorPrimary"
             android:textSize="13sp" />
 
         <com.google.android.material.textfield.TextInputLayout
@@ -140,8 +141,44 @@
                 android:maxLines="3"
                 android:minLines="1"
                 android:scrollbars="vertical"
-                android:textColor="@color/text_primary" />
+                android:textColor="?attr/colorOnSurface" />
         </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- 记账时间：点击后先选日期、再选时刻，用于「补记昨天那笔」与修正已有记录的时间。
+             用 minHeight 而不是固定高度，保证系统字体放大时文字不被裁切。 -->
+        <LinearLayout
+            android:id="@+id/layout_entry_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal"
+            android:paddingHorizontal="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/entry_time"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/text_entry_time"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="@font/app_ui_font"
+                android:gravity="end"
+                android:maxLines="1"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="15sp"
+                tools:text="2026-09-16 12:30" />
+        </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/button_save"
@@ -149,7 +186,7 @@
             android:layout_width="match_parent"
             android:layout_height="52dp"
             android:layout_marginTop="18dp"
-            android:backgroundTint="@color/md_theme_primary"
+            android:backgroundTint="?attr/colorPrimary"
             android:insetTop="0dp"
             android:insetBottom="0dp"
             android:text="@string/save"

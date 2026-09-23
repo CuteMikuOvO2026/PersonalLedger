@@ -29,7 +29,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="16dp"
                 android:text="@string/report_title"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/colorOnSurface"
                 android:textSize="24sp"
                 android:textStyle="bold" />
 
@@ -39,7 +39,7 @@
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginTop="6dp"
                 android:text="@string/report_expense_share"
-                android:textColor="@color/text_secondary"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="14sp" />
 
             <com.google.android.material.tabs.TabLayout
@@ -60,7 +60,7 @@
                 android:layout_height="332dp"
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginTop="12dp"
-                app:cardBackgroundColor="@color/surface_container"
+                app:cardBackgroundColor="?attr/colorSurfaceContainer"
                 app:cardCornerRadius="24dp"
                 app:cardElevation="3dp"
                 app:strokeWidth="0dp">
@@ -78,7 +78,7 @@
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginTop="28dp"
                 android:text="@string/report_weekly_expense"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/colorOnSurface"
                 android:textSize="17sp"
                 android:textStyle="bold" />
 
@@ -88,7 +88,7 @@
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginTop="6dp"
                 android:text="@string/report_weekly_subtitle"
-                android:textColor="@color/text_secondary"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="13sp" />
 
             <com.google.android.material.card.MaterialCardView
@@ -97,7 +97,7 @@
                 android:layout_height="316dp"
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginTop="14dp"
-                app:cardBackgroundColor="@color/surface_container"
+                app:cardBackgroundColor="?attr/colorSurfaceContainer"
                 app:cardCornerRadius="24dp"
                 app:cardElevation="3dp"
                 app:strokeWidth="0dp">

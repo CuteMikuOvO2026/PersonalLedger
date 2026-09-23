@@ -10,6 +10,7 @@ import androidx.lifecycle.map
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -97,13 +98,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- 原始数据 / 设置 ----------
 
-    /** 全量记录：仅报表页（图表与当日/分类明细）需要，首页列表已改为按页读取。 */
-    val historyList: LiveData<List<LedgerItem>> = repository.historyList.asLiveData()
-
-    /** 首页筛选弹窗的分类候选（数据库 DISTINCT 得出，无需读取整表）。 */
+    /**
+     * 首页筛选弹窗的分类候选（数据库 DISTINCT 得出，无需读取整表）。
+     *
+     * 注意：这里不再暴露「整表记录」的 LiveData。首页列表按页读取、首页统计由数据库聚合、
+     * 报表页也已全部下推到 SQL，任何界面都不需要把整表读进内存。
+     */
     val categoryNames: LiveData<List<String>> = repository.categoryNames.asLiveData()
 
-    val budget: LiveData<Double> = repository.budget.asLiveData()
+    /** 全部预算规则（总预算 / 分类预算，月 / 周周期）。 */
+    val budgets: LiveData<List<BudgetRule>> = repository.budgets.asLiveData()
+
+    /** 月度「不限分类」总预算（分）；未设置时为 0。首页卡片与报表摘要共用。 */
+    private val monthlyOverallBudgetCents: Flow<Long> =
+        repository.budgets.map { BudgetStats.overallLimitCents(it, BudgetPeriod.MONTH) }
 
     private val defaultExpenseCategories = listOf(
         CategoryItem("餐饮", R.drawable.ic_food, "expense"),
@@ -131,6 +139,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.customCategories.asLiveData().map { custom ->
             defaultIncomeCategories + custom.filter { it.type == "income" }
         }
+
+    /** 预算可选的分类范围：所有支出分类（内置 + 自定义）。 */
+    val budgetCategories: LiveData<List<String>> =
+        expenseCategories.map { categories -> categories.map { it.name } }
 
     // ---------- 自动记账开关 ----------
 
@@ -172,14 +184,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         monthStart = ranges.monthStart,
                         monthEnd = ranges.monthEnd
                     ),
-                    repository.budget
-                ) { totals, budgetValue ->
+                    monthlyOverallBudgetCents
+                ) { totals, budgetCents ->
                     LedgerStats.buildHomeStats(
                         todayIncomeCents = totals.todayIncomeCents,
                         todayExpenseCents = totals.todayExpenseCents,
                         monthIncomeCents = totals.monthIncomeCents,
                         monthExpenseCents = totals.monthExpenseCents,
-                        budgetValue = budgetValue
+                        budgetValue = budgetCents / 100.0
                     )
                 }
             }
@@ -192,9 +204,78 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val budgetProgress: LiveData<Float> = homeStatsFlow.map { it.budgetProgress }.asLiveData()
     val boardStats: LiveData<HomeStats> = homeStatsFlow.asLiveData()
 
-    /** 重新计算“今日 / 本月”区间（例如跨零点后回到前台），保证统计口径不过期。 */
+    // ---------- 预算执行情况 ----------
+
+    /** 两种周期各自的当期区间；跨零点 / 跨周后由界面调用 [refreshHomeStatsRanges] 刷新。 */
+    private data class PeriodRanges(val month: PeriodRange, val week: PeriodRange)
+
+    private val periodRanges = MutableStateFlow(currentPeriodRanges())
+
+    private fun currentPeriodRanges() = PeriodRanges(
+        month = LedgerStats.monthRange(),
+        week = LedgerStats.weekRange()
+    )
+
+    /**
+     * 每条预算规则在**自己周期**内的执行情况。
+     *
+     * 月预算用本月区间聚合、周预算用本周区间聚合，两者互不干扰；
+     * 状态判定统一走 [BudgetStats]，界面配色与提醒不再各写一套阈值。
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val budgetProgressList: LiveData<List<BudgetProgress>> =
+        combine(periodRanges, repository.budgets) { ranges, rules -> ranges to rules }
+            .flatMapLatest { (ranges, rules) ->
+                combine(
+                    repository.periodCategoryTotals(ranges.month),
+                    repository.periodCategoryTotals(ranges.week)
+                ) { monthTotals, weekTotals ->
+                    rules.map { rule ->
+                        val totals = if (rule.period == BudgetPeriod.MONTH) monthTotals else weekTotals
+                        BudgetStats.buildProgress(rule, totals)
+                    }
+                }
+            }
+            .flowOn(Dispatchers.Default)
+            .distinctUntilChanged()
+            .asLiveData()
+
+    /** 重新计算“今日 / 本月”与预算周期区间（例如跨零点后回到前台），保证统计口径不过期。 */
     fun refreshHomeStatsRanges() {
         statsRanges.value = LedgerStats.currentStatsRanges()
+        periodRanges.value = currentPeriodRanges()
+    }
+
+    // ---------- 首页洞察 ----------
+
+    /**
+     * 首页洞察卡数据：本月最高支出分类、日均支出、与上月环比。
+     *
+     * 只发两条「按分类聚合」的查询（本月 / 上月），合计、最大值、日均都在纯函数里算，
+     * 不新增任何 DAO 查询。
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val homeInsight: LiveData<HomeInsight> =
+        periodRanges
+            .flatMapLatest { ranges ->
+                val lastMonth = LedgerStats.lastMonthRange()
+                combine(
+                    repository.periodCategoryTotals(ranges.month),
+                    repository.periodCategoryTotals(lastMonth)
+                ) { monthTotals, lastMonthTotals ->
+                    HomeInsights.build(monthTotals, lastMonthTotals)
+                }
+            }
+            .flowOn(Dispatchers.Default)
+            .distinctUntilChanged()
+            .asLiveData()
+
+    fun saveBudget(rule: BudgetRule) {
+        viewModelScope.launch { repository.saveBudget(rule) }
+    }
+
+    fun deleteBudget(rule: BudgetRule) {
+        viewModelScope.launch { repository.deleteBudget(rule) }
     }
 
     // ---------- 筛选状态 + 分页（筛选与分页都下推到数据库） ----------
@@ -293,10 +374,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.update(oldItem, newItem) }
     }
 
-    fun saveBudget(newBudget: Double) {
-        viewModelScope.launch { repository.saveBudget(newBudget) }
-    }
-
     fun addCustomCategory(name: String, iconRes: Int, type: String, color: Int) {
         viewModelScope.launch { repository.addCustomCategory(name, iconRes, type, color) }
     }
@@ -322,6 +399,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val success = repository.restoreBackup(json)
             if (success) importEvent.postValue(Unit)
             onResult(success)
+        }
+    }
+
+    /**
+     * CSV 导入：把解析好的账目**追加**到现有记录（与「还原备份」的整体覆盖不同）。
+     *
+     * 导入后回到第 1 页，让用户立刻看到新进来的记录。
+     */
+    fun importCsvItems(items: List<LedgerItem>, onResult: (Int) -> Unit) {
+        viewModelScope.launch {
+            repository.addAll(items)
+            filterState.update { it.copy(page = 1) }
+            onResult(items.size)
         }
     }
 

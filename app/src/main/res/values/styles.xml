@@ -23,7 +23,7 @@
     </style>
 
     <style name="Widget.PersonalLedger.BottomNavigation" parent="Widget.Material3.BottomNavigationView">
-        <item name="android:background">@color/surface_container</item>
+        <item name="android:background">?attr/colorSurfaceContainer</item>
         <item name="itemActiveIndicatorStyle">@style/Widget.PersonalLedger.BottomNavigation.ActiveIndicator</item>
         <item name="itemIconTint">@color/bottom_nav_item_tint</item>
         <item name="itemTextColor">@color/bottom_nav_item_tint</item>
@@ -36,7 +36,7 @@
 
     <style name="Widget.PersonalLedger.Fab" parent="Widget.Material3.ExtendedFloatingActionButton.Icon.Primary">
         <item name="android:textColor">@color/white</item>
-        <item name="backgroundTint">@color/md_theme_primary</item>
+        <item name="backgroundTint">?attr/colorPrimary</item>
         <item name="iconTint">@color/white</item>
         <item name="shapeAppearance">@style/ShapeAppearance.PersonalLedger.Large</item>
     </style>
@@ -95,8 +95,8 @@
         <item name="tabPaddingEnd">0dp</item>
         <item name="android:stateListAnimator">@null</item>
         <item name="tabTextAppearance">@style/TextAppearance.PersonalLedger.BodyLarge</item>
-        <item name="tabTextColor">@color/text_secondary</item>
-        <item name="tabSelectedTextColor">@color/text_primary</item>
+        <item name="tabTextColor">?attr/colorOnSurfaceVariant</item>
+        <item name="tabSelectedTextColor">?attr/colorOnSurface</item>
     </style>
 
     <!-- 报表页饼图时间筛选：tabIndicatorHeight 必须等于 TabLayout 的完整高度（40dp），
@@ -111,10 +111,10 @@
     </style>
 
     <style name="Widget.PersonalLedger.OutlinedInput" parent="Widget.Material3.TextInputLayout.OutlinedBox">
-        <item name="boxBackgroundColor">@color/surface_container_low</item>
-        <item name="boxStrokeColor">@color/md_theme_outline</item>
-        <item name="hintTextColor">@color/text_secondary</item>
-        <item name="android:textColorHint">@color/text_secondary</item>
+        <item name="boxBackgroundColor">?attr/colorSurfaceContainerLow</item>
+        <item name="boxStrokeColor">?attr/colorOutline</item>
+        <item name="hintTextColor">?attr/colorOnSurfaceVariant</item>
+        <item name="android:textColorHint">?attr/colorOnSurfaceVariant</item>
     </style>
 
     <style name="ShapeAppearance.PersonalLedger.Large" parent="ShapeAppearance.Material3.LargeComponent">

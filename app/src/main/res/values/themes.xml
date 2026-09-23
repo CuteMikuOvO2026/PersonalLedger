@@ -20,9 +20,19 @@
         <item name="colorSurface">@color/md_theme_surface</item>
         <item name="colorOnSurface">@color/md_theme_onSurface</item>
         <item name="colorSurfaceVariant">@color/md_theme_surfaceVariant</item>
-        <item name="colorOnSurfaceVariant">@color/md_theme_onSurfaceVariant</item>
         <item name="colorOutline">@color/md_theme_outline</item>
         <item name="colorOutlineVariant">@color/md_theme_outlineVariant</item>
+        <!-- 次级文字色：绑定到 text_secondary，使界面迁移到 ?attr/colorOnSurfaceVariant 后观感不变 -->
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <!--
+            Material3 的 surface container 令牌：显式绑定到本项目原有的卡片 / 面板底色。
+            这样「未开启动态取色」时观感与改造前完全一致；
+            开启动态取色（Android 12+，见 ThemeSettings）后，这些令牌会随系统壁纸配色一起变化，
+            界面因为统一读主题属性而整体跟随。
+        -->
+        <item name="colorSurfaceContainerLow">@color/surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_container_high</item>
         <item name="android:windowBackground">@color/md_theme_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@color/surface_container</item>

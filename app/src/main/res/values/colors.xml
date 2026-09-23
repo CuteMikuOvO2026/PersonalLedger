@@ -29,7 +29,6 @@
     <color name="md_theme_surface">#FFFFFF</color>
     <color name="md_theme_onSurface">#1C2830</color>
     <color name="md_theme_surfaceVariant">#EAF2F9</color>
-    <color name="md_theme_onSurfaceVariant">#5A6B7B</color>
 
     <color name="md_theme_outline">#D6E3EE</color>
     <color name="md_theme_outlineVariant">#E4EDF5</color>

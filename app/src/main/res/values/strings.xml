@@ -11,6 +11,12 @@
     <string name="expense_this_month">已支出 %1$s%2$s</string>
     <string name="percent_value">%1$d%%</string>
     <string name="recent_records">最近记录</string>
+    <string name="insight_top_category">本月最高支出</string>
+    <string name="insight_daily_average">日均支出</string>
+    <string name="insight_month_over_month">较上月</string>
+    <string name="insight_no_data">—</string>
+    <string name="insight_mom_percent">%1$d%%</string>
+    <string name="insight_mom_flat">持平</string>
     <string name="filter">筛选</string>
     <string name="page_previous">上一页</string>
     <string name="page_next">下一页</string>
@@ -56,6 +62,9 @@
     <string name="type_expense">支出</string>
     <string name="type_income">收入</string>
     <string name="choose_category">选择分类</string>
+    <string name="entry_time">时间</string>
+    <string name="pick_entry_date">选择日期</string>
+    <string name="pick_entry_time">选择时间</string>
     <string name="note_optional">备注（可选）</string>
     <string name="search">搜索</string>
     <string name="search_hint">输入备注关键词搜索</string>
@@ -73,6 +82,37 @@
     <string name="enter_valid_number">请输入有效数字</string>
     <string name="budget_must_positive">预算必须大于 0</string>
     <string name="budget_updated">预算已更新</string>
+
+    <!-- 预算管理（支持按分类 / 按周期设置） -->
+    <string name="budget_manager">预算管理</string>
+    <string name="budget_add">新增预算</string>
+    <string name="budget_scope">适用范围</string>
+    <string name="budget_scope_overall">总预算（不限分类）</string>
+    <string name="budget_period">周期</string>
+    <string name="budget_period_month">每月</string>
+    <string name="budget_period_week">每周</string>
+    <string name="budget_limit">限额</string>
+    <string name="budget_limit_hint">请输入限额金额</string>
+    <string name="budget_empty_hint">还没有设置预算。点击「新增预算」，可以按总支出或某个分类设置每月 / 每周的限额。</string>
+    <string name="budget_state_over">（已超支）</string>
+    <string name="budget_state_warning">（接近上限）</string>
+    <string name="budget_category_over">%1$d 个分类已超预算，点击查看</string>
+    <string name="budget_delete_title">删除预算</string>
+    <string name="budget_delete_message">确定删除「%1$s」这条预算吗？</string>
+
+    <!-- 预算预警通知 -->
+    <string name="budget_alert">预算提醒</string>
+    <string name="budget_alert_desc">开启后，App 会定期检查预算使用情况；当某条预算达到 80% 或已超支时发送通知提醒。同一周期内不会重复提醒。</string>
+    <string name="budget_alert_switch">预算预警通知</string>
+    <string name="budget_alert_need_permission">需要允许本应用发送通知才能收到预算提醒</string>
+    <string name="budget_alert_channel_name">预算提醒</string>
+    <string name="budget_alert_channel_desc">预算接近上限或已超支时的提醒</string>
+    <string name="budget_alert_this_month">本月</string>
+    <string name="budget_alert_this_week">本周</string>
+    <string name="budget_alert_over_title">「%1$s」已超预算</string>
+    <string name="budget_alert_warning_title">「%1$s」接近预算上限</string>
+    <string name="budget_alert_over_text">%1$s已花 ¥%2$s，超出 ¥%3$s</string>
+    <string name="budget_alert_warning_text">%1$s已花 ¥%2$s / ¥%3$s（%4$d%%）</string>
     <string name="delete_record">删除记录</string>
     <string name="delete_record_confirm">确定要删除这条记录吗？</string>
     <string name="add_category">+ 添加分类</string>
@@ -90,6 +130,34 @@
     <string name="amount_filter_hint_max">最高金额</string>
     <string name="amount_filter_clear">清除筛选</string>
     <string name="export_csv">导出 CSV</string>
+    <string name="import_csv">导入 CSV</string>
+    <string name="csv_import_title">导入 CSV</string>
+    <string name="csv_import_mapping_hint">请确认每一列的含义（时间与金额为必填）。</string>
+    <string name="csv_import_confirm_title">确认导入</string>
+    <string name="csv_import_confirm_message">将从文件中导入 %1$d 条记录，追加到现有账本（不会覆盖已有记录）。\n\n有 %2$d 行因为时间或金额无法识别而被跳过。</string>
+    <string name="csv_import_success">已导入 %1$d 条记录</string>
+    <string name="csv_import_failed">CSV 解析失败：%1$s</string>
+    <string name="csv_import_empty">文件里没有可导入的数据行</string>
+    <string name="csv_import_no_rows">未能识别出记录，请检查文件是否为 CSV 且包含时间与金额列</string>
+    <string name="csv_column_date">时间</string>
+    <string name="csv_column_type">类型</string>
+    <string name="csv_column_category">分类</string>
+    <string name="csv_column_amount">金额</string>
+    <string name="csv_column_note">备注</string>
+    <string name="csv_column_unused">不使用</string>
+    <string name="csv_column_index">第 %1$d 列</string>
+
+    <!-- 自动本地备份 -->
+    <string name="auto_backup">自动本地备份</string>
+    <string name="auto_backup_desc">开启后，App 每天会把账本、预算与自定义分类自动备份到应用专属目录，并只保留最近 %1$d 份。备份不涉及网络。</string>
+    <string name="auto_backup_switch">每天自动备份</string>
+    <string name="auto_backup_now">立即备份一次</string>
+    <string name="auto_backup_restore">从自动备份恢复</string>
+    <string name="auto_backup_none">还没有自动备份文件</string>
+    <string name="auto_backup_done">已备份</string>
+    <string name="auto_backup_failed">备份失败：%1$s</string>
+    <string name="auto_backup_restore_confirm">将用这份备份覆盖当前全部数据，确定继续吗？</string>
+    <string name="auto_backup_file_time">%1$s</string>
     <string name="export_csv_success">CSV 导出成功</string>
     <string name="cancel">取消</string>
     <string name="confirm">确定</string>
@@ -110,6 +178,9 @@
     <!-- 自动记账 -->
     <string name="auto_bookkeeping">自动记账</string>
     <string name="theme_mode">外观</string>
+    <string name="dynamic_color">跟随壁纸配色</string>
+    <string name="dynamic_color_hint">开启后界面配色跟随系统壁纸（需 Android 12 及以上）</string>
+    <string name="dynamic_color_unavailable">跟随壁纸配色（需 Android 12 及以上，当前系统不支持）</string>
     <string name="auto_bookkeeping_desc">开启后，App 会监听微信、支付宝的支付成功通知，自动解析金额、收支方向与分类，并写入账本。</string>
     <string name="auto_bookkeeping_permission">通知使用权</string>
     <string name="auto_bookkeeping_permission_granted">已开启</string>

@@ -30,7 +30,7 @@
         style="@style/Widget.PersonalLedger.BottomNavigation"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/surface_container"
+        android:background="?attr/colorSurfaceContainer"
         android:paddingTop="8dp"
         android:paddingBottom="10dp"
         app:layout_constraintBottom_toBottomOf="parent"

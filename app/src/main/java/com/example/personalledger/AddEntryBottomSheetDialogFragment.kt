@@ -19,7 +19,10 @@ import androidx.core.view.updatePadding
 import androidx.recyclerview.widget.GridLayoutManager
 import com.example.personalledger.databinding.BottomSheetInputBinding
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.google.android.material.datepicker.MaterialDatePicker
 import com.google.android.material.tabs.TabLayout
+import com.google.android.material.timepicker.MaterialTimePicker
+import com.google.android.material.timepicker.TimeFormat
 import java.util.UUID
 import kotlin.math.roundToLong
 
@@ -36,6 +39,14 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
 
     private var isExpense = true
     private var editingItem: LedgerItem? = null
+
+    /**
+     * 当前选择的记账时间。
+     *
+     * 新建时初始化为「打开面板那一刻」，编辑时取原记录的时间；
+     * 界面上显示的值就是最终入库的值，避免出现「显示 12:30、存进去 12:32」的不一致。
+     */
+    private var selectedTimeMillis: Long = System.currentTimeMillis()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -106,6 +117,7 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
     private fun setupActions() {
         binding.buttonClose.setOnClickListener { dismiss() }
         binding.buttonSave.setOnClickListener { saveEntry() }
+        binding.layoutEntryTime.setOnClickListener { showDateTimePicker() }
     }
 
     private fun bindInitialState() {
@@ -115,7 +127,9 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
             binding.editNote.setText("")
             binding.tabType.selectTab(binding.tabType.getTabAt(0))
             isExpense = true
+            selectedTimeMillis = System.currentTimeMillis()
             updateCategories()
+            renderEntryTime()
             return
         }
 
@@ -123,8 +137,56 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
         binding.editNote.setText(item.note)
         binding.tabType.selectTab(binding.tabType.getTabAt(if (item.isExpense) 0 else 1))
         isExpense = item.isExpense
+        selectedTimeMillis = item.timeMillis
         updateCategories(item.categoryName)
         binding.buttonSave.text = getString(R.string.edit)
+        renderEntryTime()
+    }
+
+    /** 把当前选择的记账时间渲染到界面上（精确到分钟，与入库精度一致）。 */
+    private fun renderEntryTime() {
+        binding.textEntryTime.text = LedgerItemMappers.formatMillis(selectedTimeMillis)
+    }
+
+    /**
+     * 选择记账时间：先选日期，再选时刻。
+     *
+     * 分两步是 MaterialDatePicker 的固有形态（它只负责日期），日期与时刻的合成
+     * 交给 [LedgerDateTime] 处理——那里明确区分了「UTC 日期」与「本地时间戳」，
+     * 避免直接把选择器的取值当时间戳用而导致日期偏移一天。
+     */
+    private fun showDateTimePicker() {
+        val current = LedgerDateTime.toPicker(selectedTimeMillis)
+
+        val datePicker = MaterialDatePicker.Builder.datePicker()
+            .setTitleText(getString(R.string.pick_entry_date))
+            .setSelection(current.utcDateMillis)
+            .build()
+
+        datePicker.addOnPositiveButtonClickListener { utcDateMillis ->
+            // 只替换日期，时分沿用当前选择
+            showTimePicker(current.copy(utcDateMillis = utcDateMillis))
+        }
+
+        datePicker.show(childFragmentManager, DATE_PICKER_TAG)
+    }
+
+    private fun showTimePicker(picked: PickerDateTime) {
+        val timePicker = MaterialTimePicker.Builder()
+            .setTimeFormat(TimeFormat.CLOCK_24H)
+            .setHour(picked.hourOfDay)
+            .setMinute(picked.minute)
+            .setTitleText(getString(R.string.pick_entry_time))
+            .build()
+
+        timePicker.addOnPositiveButtonClickListener {
+            selectedTimeMillis = LedgerDateTime.fromPicker(
+                picked.copy(hourOfDay = timePicker.hour, minute = timePicker.minute)
+            )
+            renderEntryTime()
+        }
+
+        timePicker.show(childFragmentManager, TIME_PICKER_TAG)
     }
 
     private fun observeCategories() {
@@ -183,7 +245,7 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
 
         val item = LedgerItem(
             id = editingItem?.id?.ifEmpty { UUID.randomUUID().toString() } ?: UUID.randomUUID().toString(),
-            timeMillis = editingItem?.timeMillis ?: System.currentTimeMillis(),
+            timeMillis = selectedTimeMillis,
             amountCents = (amount * 100).roundToLong(),
             isExpense = isExpense,
             categoryName = selectedCategory.name,
@@ -324,6 +386,8 @@ class AddEntryBottomSheetDialogFragment : BottomSheetDialogFragment() {
 
     companion object {
         const val TAG = "AddEntryBottomSheet"
+        private const val DATE_PICKER_TAG = "entry_date_picker"
+        private const val TIME_PICKER_TAG = "entry_time_picker"
         private const val ARG_EDIT_AMOUNT_CENTS = "arg_edit_amount_cents"
         private const val ARG_EDIT_NOTE = "arg_edit_note"
         private const val ARG_EDIT_TIME_MILLIS = "arg_edit_time_millis"

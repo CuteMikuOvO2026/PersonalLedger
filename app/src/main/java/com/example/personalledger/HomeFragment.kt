@@ -1,7 +1,10 @@
 package com.example.personalledger
 
+import android.Manifest
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
@@ -11,15 +14,21 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.switchmaterial.SwitchMaterial
 import androidx.appcompat.widget.SearchView
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.MenuProvider
 import androidx.core.view.setPadding
@@ -33,6 +42,7 @@ import com.example.personalledger.databinding.FragmentHomeBinding
 import com.google.android.material.datepicker.MaterialDatePicker
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToLong
 
 class HomeFragment : Fragment() {
 
@@ -46,6 +56,19 @@ class HomeFragment : Fragment() {
 
     /** 筛选弹窗的分类候选（由数据库去重得出，避免为了筛选把整表读进内存）。 */
     private var filterCategoryNames: List<String> = emptyList()
+
+    /** 预算可选的分类范围（所有支出分类）。 */
+    private var budgetCategoryNames: List<String> = emptyList()
+
+    /** 通知权限申请结果（Android 13+）：没拿到就提示用户，开关保持关闭。 */
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val ctx = context ?: return@registerForActivityResult
+        if (!granted) {
+            Toast.makeText(ctx, R.string.budget_alert_need_permission, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     private val ledgerAdapter: LedgerAdapter = LedgerAdapter(
         onEditClick = { item: LedgerItem ->
@@ -107,6 +130,11 @@ class HomeFragment : Fragment() {
             filterCategoryNames = names
         }
 
+        // 预算可选范围（所有支出分类：内置 + 自定义）
+        viewModel.budgetCategories.observe(viewLifecycleOwner) { names ->
+            budgetCategoryNames = names
+        }
+
         viewModel.todayIncome.observe(viewLifecycleOwner) { income ->
             binding.textTodayIncome.text = "+$income"
         }
@@ -115,24 +143,12 @@ class HomeFragment : Fragment() {
             binding.textTodayExpense.text = "-$expense"
         }
 
-        viewModel.budget.observe(viewLifecycleOwner) { budget ->
-            if (budget > 0) {
-                binding.textBudgetLabel.text = getString(
-                    R.string.budget_amount,
-                    getString(R.string.currency_symbol),
-                    String.format(Locale.getDefault(), "%.2f", budget)
-                )
-                binding.layoutBudget.visibility = View.VISIBLE
-            } else {
-                binding.textBudgetLabel.text = getString(R.string.budget_not_set)
-                binding.layoutBudget.visibility = View.GONE
-            }
+        viewModel.budgetProgressList.observe(viewLifecycleOwner) { progressList ->
+            renderBudgetCard(progressList)
         }
 
-        viewModel.budgetProgress.observe(viewLifecycleOwner) { progress ->
-            binding.progressBudget.progress = progress.toInt()
-            binding.textBudgetPercent.text = getString(R.string.percent_value, progress.toInt())
-            updateProgressColor(progress)
+        viewModel.homeInsight.observe(viewLifecycleOwner) { insight ->
+            renderInsightCard(insight)
         }
 
         viewModel.expenseThisMonth.observe(viewLifecycleOwner) { expense ->
@@ -293,9 +309,9 @@ class HomeFragment : Fragment() {
         val (min, max) = viewModel.currentAmountRange()
         val active = min != null || max != null
         val color = if (active) {
-            ContextCompat.getColor(requireContext(), R.color.md_theme_tertiary)
+            ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorTertiary, R.color.md_theme_tertiary)
         } else {
-            ContextCompat.getColor(requireContext(), R.color.text_secondary)
+            ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurfaceVariant, R.color.text_secondary)
         }
         binding.textAmountFilter.setTextColor(color)
     }
@@ -323,21 +339,98 @@ class HomeFragment : Fragment() {
         val (from, to) = viewModel.currentDateRange()
         val active = from != null || to != null
         val color = if (active) {
-            ContextCompat.getColor(requireContext(), R.color.md_theme_primary)
+            ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorPrimary, R.color.md_theme_primary)
         } else {
-            ContextCompat.getColor(requireContext(), R.color.text_secondary)
+            ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurfaceVariant, R.color.text_secondary)
         }
         binding.textDateFilter.setTextColor(color)
     }
 
-    private fun updateProgressColor(progress: Float) {
-        val tintColor = when {
-            progress >= 100 -> ContextCompat.getColor(requireContext(), R.color.expense)
-            progress >= 80 -> ContextCompat.getColor(requireContext(), R.color.warning)
-            else -> ContextCompat.getColor(requireContext(), R.color.income)
+    /**
+     * 渲染首页预算卡片。
+     *
+     * 卡片主体仍是「月度总预算」的进度（与改造前一致）；
+     * 若存在超支的分类预算，额外显示一行提示，点击进入预算管理。
+     */
+    private fun renderBudgetCard(progressList: List<BudgetProgress>) {
+        val overall = progressList.firstOrNull {
+            it.rule.period == BudgetPeriod.MONTH && it.rule.isOverall
         }
+
+        if (overall == null) {
+            binding.textBudgetLabel.text = getString(R.string.budget_not_set)
+            binding.layoutBudget.visibility = View.GONE
+        } else {
+            binding.textBudgetLabel.text = getString(
+                R.string.budget_amount,
+                getString(R.string.currency_symbol),
+                LedgerStats.formatAmount(overall.rule.limitCents)
+            )
+            binding.layoutBudget.visibility = View.VISIBLE
+            binding.progressBudget.progress = overall.percent.coerceAtMost(100)
+            binding.textBudgetPercent.text = getString(R.string.percent_value, overall.percent)
+            updateProgressColor(overall.state)
+        }
+
+        val overspentCategories = progressList.count {
+            !it.rule.isOverall && it.state == BudgetState.OVER
+        }
+        binding.textBudgetAlert.visibility =
+            if (overspentCategories > 0) View.VISIBLE else View.GONE
+        if (overspentCategories > 0) {
+            binding.textBudgetAlert.text =
+                getString(R.string.budget_category_over, overspentCategories)
+        }
+    }
+
+    /** 进度条配色统一由 [BudgetState] 决定，阈值只存在于 [BudgetStats] 一处。 */
+    private fun updateProgressColor(state: BudgetState) {
+        val tintColor = ContextCompat.getColor(
+            requireContext(),
+            when (state) {
+                BudgetState.OVER -> R.color.expense
+                BudgetState.WARNING -> R.color.warning
+                BudgetState.NORMAL -> R.color.income
+            }
+        )
         binding.progressBudget.progressTintList = ColorStateList.valueOf(tintColor)
         binding.progressBudget.invalidate()
+    }
+
+    /**
+     * 渲染首页洞察卡：本月最高支出分类 / 日均支出 / 与上月环比。
+     *
+     * 没有数据时统一显示占位符，避免出现「¥0.00 最高支出」这类无意义文案；
+     * 环比只有在上月确实有支出时才展示（[HomeInsight.monthOverMonthPercent] 为 null 表示无法比较）。
+     */
+    private fun renderInsightCard(insight: HomeInsight) {
+        val placeholder = getString(R.string.insight_no_data)
+        val currency = getString(R.string.currency_symbol)
+
+        binding.textInsightTopCategory.text = insight.topCategoryName ?: placeholder
+        binding.textInsightDailyAverage.text = if (insight.hasExpense) {
+            currency + LedgerStats.formatAmount(insight.dailyAverageCents)
+        } else {
+            placeholder
+        }
+
+        val percent = insight.monthOverMonthPercent
+        binding.textInsightMonthOverMonth.text = when {
+            percent == null -> placeholder
+            percent == 0 -> getString(R.string.insight_mom_flat)
+            else -> getString(R.string.insight_mom_percent, percent)
+        }
+        // 花得比上月多用「支出色」提示，少用「收入色」，无法比较用次级文字色
+        binding.textInsightMonthOverMonth.setTextColor(
+            ContextCompat.getColor(
+                requireContext(),
+                when {
+                    percent == null || percent == 0 -> R.color.text_secondary
+                    percent > 0 -> R.color.expense
+                    else -> R.color.income
+                }
+            )
+        )
     }
 
     private fun setupFab() {
@@ -348,34 +441,163 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupBudgetClick() {
-        binding.layoutBudgetClick.setOnClickListener { showBudgetDialog() }
+        binding.layoutBudgetClick.setOnClickListener { showBudgetManagerDialog() }
+        binding.textBudgetAlert.setOnClickListener { showBudgetManagerDialog() }
     }
 
-    private fun showBudgetDialog() {
-        val currentBudget = viewModel.budget.value ?: 0.0
-        val editText = EditText(requireContext()).apply {
+    /**
+     * 预算管理：列出全部预算规则及其当期执行情况，可新增或删除。
+     *
+     * 列表项文本包含「当期已花 / 限额（百分比）+ 状态」，因此各分类的超支情况
+     * 在这里一览无余；点击某项即可删除。
+     */
+    private fun showBudgetManagerDialog() {
+        val progressList = viewModel.budgetProgressList.value.orEmpty()
+
+        val builder = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.budget_manager)
+            .setNeutralButton(R.string.budget_add) { _, _ -> showAddBudgetDialog() }
+            .setNegativeButton(R.string.close, null)
+
+        if (progressList.isEmpty()) {
+            builder.setMessage(R.string.budget_empty_hint)
+        } else {
+            builder.setItems(progressList.map { formatBudgetLabel(it) }.toTypedArray()) { _, which ->
+                progressList.getOrNull(which)?.let { showDeleteBudgetDialog(it) }
+            }
+        }
+        builder.show()
+    }
+
+    private fun formatBudgetLabel(progress: BudgetProgress): String {
+        val rule = progress.rule
+        val scope = rule.categoryName ?: getString(R.string.budget_scope_overall)
+        val period = getString(
+            if (rule.period == BudgetPeriod.MONTH) R.string.budget_period_month
+            else R.string.budget_period_week
+        )
+        val stateMark = when (progress.state) {
+            BudgetState.OVER -> getString(R.string.budget_state_over)
+            BudgetState.WARNING -> getString(R.string.budget_state_warning)
+            BudgetState.NORMAL -> ""
+        }
+        return "$scope · $period\n已花 ${LedgerStats.formatAmount(progress.spentCents)} / " +
+            "${LedgerStats.formatAmount(rule.limitCents)}（${progress.percent}%）$stateMark"
+    }
+
+    private fun showDeleteBudgetDialog(progress: BudgetProgress) {
+        val scope = progress.rule.categoryName ?: getString(R.string.budget_scope_overall)
+        val period = getString(
+            if (progress.rule.period == BudgetPeriod.MONTH) R.string.budget_period_month
+            else R.string.budget_period_week
+        )
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.budget_delete_title)
+            .setMessage(getString(R.string.budget_delete_message, "$scope · $period"))
+            .setPositiveButton(R.string.delete) { _, _ ->
+                viewModel.deleteBudget(progress.rule)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** 新增预算：适用范围（总预算或某个支出分类）+ 周期（每月 / 每周）+ 限额。 */
+    private fun showAddBudgetDialog() {
+        val context = requireContext()
+        val scopeOptions = buildList {
+            add(getString(R.string.budget_scope_overall))
+            addAll(budgetCategoryNames)
+        }
+        val periodOptions = listOf(
+            getString(R.string.budget_period_month),
+            getString(R.string.budget_period_week)
+        )
+
+        val scopeSpinner = Spinner(context).apply {
+            adapter = ArrayAdapter(
+                context,
+                android.R.layout.simple_spinner_dropdown_item,
+                scopeOptions
+            )
+        }
+        val periodSpinner = Spinner(context).apply {
+            adapter = ArrayAdapter(
+                context,
+                android.R.layout.simple_spinner_dropdown_item,
+                periodOptions
+            )
+        }
+        val amountEdit = EditText(context).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            hint = getString(R.string.enter_budget_hint)
-            if (currentBudget > 0) setText(String.format(Locale.getDefault(), "%.2f", currentBudget))
-            setPadding(48, 32, 48, 32)
+            hint = getString(R.string.budget_limit_hint)
         }
 
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.set_month_budget)
-            .setView(editText)
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((24 * density).toInt(), 8, (24 * density).toInt(), 0)
+            addView(formLabel(R.string.budget_scope))
+            addView(scopeSpinner)
+            addView(formLabel(R.string.budget_period))
+            addView(periodSpinner)
+            addView(formLabel(R.string.budget_limit))
+            addView(amountEdit)
+        }
+
+        AlertDialog.Builder(context)
+            .setTitle(R.string.budget_add)
+            .setView(content)
             .setPositiveButton(R.string.save) { _, _ ->
-                val budget = editText.text.toString().toDoubleOrNull()
+                val amount = amountEdit.text.toString().toDoubleOrNull()
                 when {
-                    budget == null -> Toast.makeText(requireContext(), getString(R.string.enter_valid_number), Toast.LENGTH_SHORT).show()
-                    budget <= 0 -> Toast.makeText(requireContext(), getString(R.string.budget_must_positive), Toast.LENGTH_SHORT).show()
+                    amount == null -> Toast.makeText(
+                        context, getString(R.string.enter_valid_number), Toast.LENGTH_SHORT
+                    ).show()
+
+                    amount <= 0 -> Toast.makeText(
+                        context, getString(R.string.budget_must_positive), Toast.LENGTH_SHORT
+                    ).show()
+
                     else -> {
-                        viewModel.saveBudget(budget)
-                        Toast.makeText(requireContext(), getString(R.string.budget_updated), Toast.LENGTH_SHORT).show()
+                        val scopeIndex = scopeSpinner.selectedItemPosition
+                        viewModel.saveBudget(
+                            BudgetRule(
+                                period = if (periodSpinner.selectedItemPosition == 1) {
+                                    BudgetPeriod.WEEK
+                                } else {
+                                    BudgetPeriod.MONTH
+                                },
+                                categoryName = if (scopeIndex == 0) {
+                                    null
+                                } else {
+                                    scopeOptions.getOrNull(scopeIndex)
+                                },
+                                limitCents = (amount * 100).roundToLong()
+                            )
+                        )
+                        Toast.makeText(
+                            context, getString(R.string.budget_updated), Toast.LENGTH_SHORT
+                        ).show()
                     }
                 }
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private val density: Float get() = resources.displayMetrics.density
+
+    /** 表单小标题（预算新增对话框用）。 */
+    private fun formLabel(textRes: Int): TextView = TextView(requireContext()).apply {
+        setText(textRes)
+        setTextColor(
+            ThemeColors.of(
+                requireContext(),
+                com.google.android.material.R.attr.colorOnSurfaceVariant,
+                R.color.text_secondary
+            )
+        )
+        textSize = 12f
+        setPadding(0, (10 * density).toInt(), 0, 0)
     }
 
     private fun showDeleteConfirmDialog(item: LedgerItem) {
@@ -427,6 +649,11 @@ class HomeFragment : Fragment() {
                         true
                     }
 
+                    R.id.action_budget_alert -> {
+                        showBudgetAlertDialog()
+                        true
+                    }
+
                     else -> false
                 }
         }
@@ -444,7 +671,7 @@ class HomeFragment : Fragment() {
 
         content.addView(TextView(requireContext()).apply {
             text = getString(R.string.auto_bookkeeping_desc)
-            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            setTextColor(ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurfaceVariant, R.color.text_secondary))
             textSize = 14f
         })
 
@@ -505,16 +732,143 @@ class HomeFragment : Fragment() {
             .show()
     }
 
+    /**
+     * 「外观」设置：主题模式（单选）+ 动态取色开关。
+     *
+     * 动态取色默认关闭——本应用有一套固定的天蓝配色与分类色板，视觉识别度是产品的一部分，
+     * 所以做成显式可选项。切换后只需重建当前 Activity 即可生效（见 [App] 的 precondition）。
+     */
     private fun showThemeDialog() {
+        val context = requireContext()
+        val density = resources.displayMetrics.density
         val current = viewModel.themeMode.value ?: ThemeSettings.SYSTEM
-        AlertDialog.Builder(requireContext())
+
+        val selectedIndex = intArrayOf(ThemeSettings.indexOf(current))
+        val modeGroup = RadioGroup(context).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        ThemeSettings.labels().forEachIndexed { index, label ->
+            modeGroup.addView(
+                RadioButton(context).apply {
+                    text = label
+                    isChecked = index == selectedIndex[0]
+                    setOnClickListener { selectedIndex[0] = index }
+                }
+            )
+        }
+
+        val dynamicAvailable = ThemeSettings.isDynamicColorAvailable()
+        val dynamicSwitch = SwitchMaterial(context).apply {
+            text = getString(
+                if (dynamicAvailable) R.string.dynamic_color
+                else R.string.dynamic_color_unavailable
+            )
+            isChecked = dynamicAvailable && ThemeSettings.isDynamicColorEnabled(context)
+            isEnabled = dynamicAvailable
+        }
+
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((24 * density).toInt(), (8 * density).toInt(), (24 * density).toInt(), 0)
+            addView(modeGroup)
+            addView(dynamicSwitch)
+            addView(
+                TextView(context).apply {
+                    text = getString(R.string.dynamic_color_hint)
+                    setTextColor(ThemeColors.of(context, com.google.android.material.R.attr.colorOnSurfaceVariant, R.color.text_secondary))
+                    textSize = 12f
+                    setPadding(0, 0, 0, (4 * density).toInt())
+                }
+            )
+        }
+
+        AlertDialog.Builder(context)
             .setTitle(R.string.theme_mode)
-            .setSingleChoiceItems(ThemeSettings.labels(), ThemeSettings.indexOf(current)) { dialog, which ->
-                viewModel.setThemeMode(ThemeSettings.fromIndex(which))
-                dialog.dismiss()
+            .setView(content)
+            .setPositiveButton(R.string.confirm) { _, _ ->
+                val dynamicBefore = ThemeSettings.isDynamicColorEnabled(context)
+                ThemeSettings.saveDynamicColorEnabled(context, dynamicSwitch.isChecked)
+
+                val newMode = ThemeSettings.fromIndex(selectedIndex[0])
+                when {
+                    // setThemeMode 内部会调用 setDefaultNightMode，系统会自动重建 Activity
+                    newMode != current -> viewModel.setThemeMode(newMode)
+                    // 仅动态取色变化时，手动重建以让主题叠加生效
+                    dynamicSwitch.isChecked != dynamicBefore -> requireActivity().recreate()
+                }
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    /**
+     * 「预算提醒」设置：开关 + 通知权限处理。
+     *
+     * 开启前必须先拿到通知权限，否则定时任务会「算出来却发不出去」，
+     * 用户会以为功能坏了。因此这里先申请权限，拿到之后才写入开关。
+     */
+    private fun showBudgetAlertDialog() {
+        val context = requireContext()
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((24 * density).toInt(), 8, (24 * density).toInt(), 0)
+        }
+        content.addView(TextView(context).apply {
+            text = getString(R.string.budget_alert_desc)
+            setTextColor(
+                ThemeColors.of(
+                    context,
+                    com.google.android.material.R.attr.colorOnSurfaceVariant,
+                    R.color.text_secondary
+                )
+            )
+            textSize = 13f
+        })
+
+        val switch = SwitchMaterial(context).apply {
+            text = getString(R.string.budget_alert_switch)
+            isChecked = BudgetAlertSettings.isEnabled(context)
+            setPadding(0, (12 * density).toInt(), 0, 0)
+        }
+        var suppressing = false
+        switch.setOnCheckedChangeListener { _, checked ->
+            if (suppressing) return@setOnCheckedChangeListener
+            if (checked && !notificationsAllowed()) {
+                // 权限没拿到就不保存开关，避免出现「已开启但收不到通知」的假象
+                suppressing = true
+                switch.isChecked = false
+                suppressing = false
+                requestNotificationPermission()
+                return@setOnCheckedChangeListener
+            }
+            BudgetAlertSettings.setEnabled(context, checked)
+            BudgetAlertWorker.sync(context)
+        }
+        content.addView(switch)
+
+        AlertDialog.Builder(context)
+            .setTitle(R.string.budget_alert)
+            .setView(content)
+            .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    private fun notificationsAllowed(): Boolean =
+        NotificationManagerCompat.from(requireContext()).areNotificationsEnabled()
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            // API 33 以下没有运行时权限，只能是用户在系统设置里关掉了通知
+            Toast.makeText(requireContext(), R.string.budget_alert_need_permission, Toast.LENGTH_SHORT)
+                .show()
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", requireContext().packageName, null)
+                }
+            )
+        }
     }
 
     private fun isNotificationAccessGranted(): Boolean {

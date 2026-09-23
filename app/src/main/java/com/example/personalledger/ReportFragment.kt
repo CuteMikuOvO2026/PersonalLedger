@@ -1,5 +1,6 @@
 package com.example.personalledger
 
+import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -13,16 +14,22 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.Spinner
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
+import com.google.android.material.switchmaterial.SwitchMaterial
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
 import com.example.personalledger.databinding.FragmentReportBinding
 import com.google.android.material.tabs.TabLayout
 import com.github.mikephil.charting.components.Legend
@@ -38,6 +45,7 @@ import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -54,8 +62,8 @@ class ReportFragment : Fragment() {
             ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
 
-    /** 最近 7 天的完整日期（与柱状图 x 轴一一对应），用于点击某天查看当日记录。 */
-    private var lastWeeklyDates: List<String> = emptyList()
+    /** 最近 7 天的分桶（与柱状图 x 轴一一对应），点击柱子时按它查询当日明细。 */
+    private var lastWeeklyDayRanges: List<DayRange> = emptyList()
 
     /** 饼图时间筛选选项的顺序，与 [binding.tabPieRange] 的 Tab 位置一一对应。 */
     private val pieRangeOptions = listOf(
@@ -73,9 +81,9 @@ class ReportFragment : Fragment() {
 
     private val chartColors by lazy {
         listOf(
-            ContextCompat.getColor(requireContext(), R.color.md_theme_primary),
+            ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorPrimary, R.color.md_theme_primary),
             Color.parseColor("#5FC3E8"),
-            ContextCompat.getColor(requireContext(), R.color.md_theme_tertiary),
+            ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorTertiary, R.color.md_theme_tertiary),
             Color.parseColor("#8E7CC3"),
             Color.parseColor("#E28CA8"),
             Color.parseColor("#3FB6A6"),
@@ -108,6 +116,14 @@ class ReportFragment : Fragment() {
         uri?.let { importBackupFrom(it) }
     }
 
+    private val openCsvLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { importCsvFrom(it) }
+    }
+
+    private val density: Float get() = resources.displayMetrics.density
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setHasOptionsMenu(true)
@@ -128,7 +144,7 @@ class ReportFragment : Fragment() {
         setupPieRangeTabs()
 
         reportViewModel.reportData.observe(viewLifecycleOwner) { report ->
-            lastWeeklyDates = report.weeklyDates
+            lastWeeklyDayRanges = report.weeklyDayRanges
             updateBarChart(report.weeklyBar)
         }
 
@@ -136,9 +152,6 @@ class ReportFragment : Fragment() {
         reportViewModel.pieEntries.observe(viewLifecycleOwner) { entries ->
             updatePieChart(entries)
         }
-
-        // 观察完整历史列表，使其 value 可用，供“点击某天查看当日记录”查询
-        viewModel.historyList.observe(viewLifecycleOwner) { }
 
         setupMenuProvider()
     }
@@ -181,6 +194,9 @@ class ReportFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        // 应用可能在后台跨过零点，回到前台时刷新「今天」锚点，
+        // 让饼图（近 N 天）与柱状图（最近 7 天）的窗口一起前移
+        reportViewModel.refreshDayAnchor()
         requireActivity().invalidateOptionsMenu()
     }
 
@@ -365,6 +381,294 @@ class ReportFragment : Fragment() {
         }
     }
 
+    // ---------- CSV 导入 ----------
+
+    private fun importCsv() {
+        openCsvLauncher.launch(
+            arrayOf("text/csv", "text/comma-separated-values", "text/plain", "*/*")
+        )
+    }
+
+    /**
+     * 读取并解析 CSV，然后进入列映射确认。
+     *
+     * 分两步是刻意的：解析（[CsvLedgerParser.parse]）只负责把文本切成表，
+     * 「哪一列是什么」单独确认——这样既能读回自己导出的文件，也能接住别处导出的格式。
+     */
+    private fun importCsvFrom(uri: Uri) {
+        val context = requireContext()
+        val text = try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                stream.bufferedReader(Charsets.UTF_8).readText()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(
+                context,
+                getString(R.string.csv_import_failed, e.message),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        if (text.isNullOrBlank()) {
+            Toast.makeText(context, getString(R.string.import_empty_file), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val rows = CsvLedgerParser.parse(text)
+        if (rows.isEmpty()) {
+            Toast.makeText(context, getString(R.string.csv_import_empty), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val firstRow = rows.first()
+        val hasHeader = CsvLedgerParser.looksLikeHeader(firstRow)
+        val dataRows = if (hasHeader) rows.drop(1) else rows
+        if (dataRows.isEmpty()) {
+            Toast.makeText(context, getString(R.string.csv_import_no_rows), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 没有表头时用「第 N 列」作为下拉里的展示名
+        val columnCount = rows.maxOf { it.size }
+        val columnLabels = if (hasHeader) {
+            firstRow.mapIndexed { index, cell ->
+                cell.trim().ifEmpty { getString(R.string.csv_column_index, index + 1) }
+            }
+        } else {
+            (1..columnCount).map { getString(R.string.csv_column_index, it) }
+        }
+
+        showCsvMappingDialog(
+            columnLabels = columnLabels,
+            dataRows = dataRows,
+            suggested = if (hasHeader) CsvLedgerParser.suggestMapping(firstRow) else null
+        )
+    }
+
+    /** 列映射对话框：5 个下拉分别指定时间 / 类型 / 分类 / 金额 / 备注，默认取自动识别结果。 */
+    private fun showCsvMappingDialog(
+        columnLabels: List<String>,
+        dataRows: List<List<String>>,
+        suggested: CsvColumnMapping?
+    ) {
+        val context = requireContext()
+        val options = listOf(getString(R.string.csv_column_unused)) + columnLabels
+
+        // 下拉第 0 项是「不使用」，因此真实列下标 = 选中位置 - 1
+        fun buildSpinner(preselectIndex: Int): Spinner {
+            val spinner = Spinner(context).apply {
+                adapter = ArrayAdapter(
+                    context,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    options
+                )
+            }
+            spinner.setSelection((preselectIndex + 1).coerceIn(0, options.lastIndex))
+            return spinner
+        }
+
+        val dateSpinner = buildSpinner(suggested?.dateIndex ?: -1)
+        val typeSpinner = buildSpinner(suggested?.typeIndex ?: -1)
+        val categorySpinner = buildSpinner(suggested?.categoryIndex ?: -1)
+        val amountSpinner = buildSpinner(suggested?.amountIndex ?: -1)
+        val noteSpinner = buildSpinner(suggested?.noteIndex ?: -1)
+
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((24 * density).toInt(), 8, (24 * density).toInt(), 0)
+            addView(formHint(getString(R.string.csv_import_mapping_hint)))
+            addView(formLabel(R.string.csv_column_date))
+            addView(dateSpinner)
+            addView(formLabel(R.string.csv_column_type))
+            addView(typeSpinner)
+            addView(formLabel(R.string.csv_column_category))
+            addView(categorySpinner)
+            addView(formLabel(R.string.csv_column_amount))
+            addView(amountSpinner)
+            addView(formLabel(R.string.csv_column_note))
+            addView(noteSpinner)
+        }
+
+        AlertDialog.Builder(context)
+            .setTitle(R.string.csv_import_title)
+            .setView(content)
+            .setPositiveButton(R.string.confirm) { _, _ ->
+                val mapping = CsvColumnMapping(
+                    dateIndex = dateSpinner.selectedItemPosition - 1,
+                    typeIndex = typeSpinner.selectedItemPosition - 1,
+                    categoryIndex = categorySpinner.selectedItemPosition - 1,
+                    amountIndex = amountSpinner.selectedItemPosition - 1,
+                    noteIndex = noteSpinner.selectedItemPosition - 1
+                )
+                if (!mapping.isUsable) {
+                    Toast.makeText(context, R.string.csv_import_no_rows, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val result = CsvLedgerParser.toLedgerItems(dataRows, mapping)
+                if (result.items.isEmpty()) {
+                    Toast.makeText(context, R.string.csv_import_no_rows, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                confirmCsvImport(result)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmCsvImport(result: CsvImportResult) {
+        val context = requireContext()
+        AlertDialog.Builder(context)
+            .setTitle(R.string.csv_import_confirm_title)
+            .setMessage(
+                getString(
+                    R.string.csv_import_confirm_message,
+                    result.items.size,
+                    result.skipped
+                )
+            )
+            .setPositiveButton(R.string.import_confirm) { _, _ ->
+                viewModel.importCsvItems(result.items) { count ->
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.csv_import_success, count),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    // ---------- 自动本地备份 ----------
+
+    private fun showAutoBackupDialog() {
+        val context = requireContext()
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((24 * density).toInt(), 8, (24 * density).toInt(), 0)
+        }
+        content.addView(formHint(getString(R.string.auto_backup_desc, AutoBackupStore.KEEP_COUNT)))
+
+        content.addView(SwitchMaterial(context).apply {
+            text = getString(R.string.auto_backup_switch)
+            isChecked = AutoBackupSettings.isEnabled(context)
+            setPadding(0, (12 * density).toInt(), 0, 0)
+            setOnCheckedChangeListener { _, checked ->
+                AutoBackupSettings.setEnabled(context, checked)
+                AutoBackupWorker.sync(context)
+            }
+        })
+
+        content.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, (8 * density).toInt(), 0, 0)
+            addView(Button(context).apply {
+                text = getString(R.string.auto_backup_now)
+                setOnClickListener { runAutoBackupNow(context) }
+            })
+            addView(Button(context).apply {
+                text = getString(R.string.auto_backup_restore)
+                setOnClickListener { showRestoreFromAutoBackupDialog() }
+            })
+        })
+
+        AlertDialog.Builder(context)
+            .setTitle(R.string.auto_backup)
+            .setView(content)
+            .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    private fun runAutoBackupNow(context: Context) {
+        viewModel.getBackupJson { json ->
+            try {
+                AutoBackupStore.write(context, json)
+                Toast.makeText(context, getString(R.string.auto_backup_done), Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    context,
+                    getString(R.string.auto_backup_failed, e.message),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun showRestoreFromAutoBackupDialog() {
+        val context = requireContext()
+        val files = AutoBackupStore.list(context)
+        if (files.isEmpty()) {
+            Toast.makeText(context, R.string.auto_backup_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val stampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+        val labels = files.map { stampFormat.format(Date(it.lastModified())) }.toTypedArray()
+
+        AlertDialog.Builder(context)
+            .setTitle(R.string.auto_backup_restore)
+            .setItems(labels) { _, which ->
+                val file = files.getOrNull(which) ?: return@setItems
+                confirmRestoreFromFile(context, file)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmRestoreFromFile(context: Context, file: java.io.File) {
+        AlertDialog.Builder(context)
+            .setTitle(R.string.auto_backup_restore)
+            .setMessage(R.string.auto_backup_restore_confirm)
+            .setPositiveButton(R.string.import_confirm) { _, _ ->
+                val json = try {
+                    file.readText(Charsets.UTF_8)
+                } catch (e: Exception) {
+                    null
+                }
+                if (json.isNullOrBlank()) {
+                    Toast.makeText(context, R.string.import_empty_file, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                viewModel.importBackup(json) { success ->
+                    Toast.makeText(
+                        context,
+                        if (success) R.string.import_success else R.string.import_failed,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** 表单小标题。 */
+    private fun formLabel(textRes: Int): TextView = TextView(requireContext()).apply {
+        setText(textRes)
+        setTextColor(
+            ThemeColors.of(
+                requireContext(),
+                com.google.android.material.R.attr.colorOnSurfaceVariant,
+                R.color.text_secondary
+            )
+        )
+        textSize = 12f
+        setPadding(0, (10 * density).toInt(), 0, 0)
+    }
+
+    /** 表单说明文字。 */
+    private fun formHint(text: String): TextView = TextView(requireContext()).apply {
+        this.text = text
+        setTextColor(
+            ThemeColors.of(
+                requireContext(),
+                com.google.android.material.R.attr.colorOnSurfaceVariant,
+                R.color.text_secondary
+            )
+        )
+        textSize = 13f
+    }
+
     private fun initCharts() {
         initPieChart()
         initBarChart()
@@ -377,19 +681,19 @@ class ReportFragment : Fragment() {
             isDrawHoleEnabled = true
             holeRadius = 62f
             transparentCircleRadius = 66f
-            setHoleColor(ContextCompat.getColor(requireContext(), R.color.surface_container))
+            setHoleColor(ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorSurfaceContainer, R.color.surface_container))
             setCenterText(getString(R.string.report_center_expense))
             setCenterTextSize(15f)
-            setCenterTextColor(ContextCompat.getColor(requireContext(), R.color.text_primary))
+            setCenterTextColor(ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurface, R.color.text_primary))
             setCenterTextTypeface(chartTypeface)
             setEntryLabelTextSize(11f)
-            setEntryLabelColor(ContextCompat.getColor(requireContext(), R.color.text_primary))
+            setEntryLabelColor(ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurface, R.color.text_primary))
             setEntryLabelTypeface(chartTypeface)
             setNoDataText(getString(R.string.report_empty_expense))
-            setNoDataTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            setNoDataTextColor(ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurfaceVariant, R.color.text_secondary))
             legend.apply {
                 isEnabled = true
-                textColor = ContextCompat.getColor(requireContext(), R.color.text_secondary)
+                textColor = ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurfaceVariant, R.color.text_secondary)
                 typeface = chartTypeface
                 form = Legend.LegendForm.CIRCLE
                 formSize = 10f
@@ -424,24 +728,24 @@ class ReportFragment : Fragment() {
             extraTopOffset = 8f
             extraBottomOffset = 8f
             setNoDataText(getString(R.string.report_empty_weekly))
-            setNoDataTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            setNoDataTextColor(ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurfaceVariant, R.color.text_secondary))
 
             xAxis.apply {
                 position = XAxis.XAxisPosition.BOTTOM
                 setDrawGridLines(false)
-                textColor = ContextCompat.getColor(requireContext(), R.color.text_secondary)
+                textColor = ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurfaceVariant, R.color.text_secondary)
                 granularity = 1f
                 typeface = chartTypeface
-                axisLineColor = ContextCompat.getColor(requireContext(), R.color.md_theme_outlineVariant)
+                axisLineColor = ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOutlineVariant, R.color.md_theme_outlineVariant)
             }
 
             axisLeft.apply {
                 setDrawGridLines(true)
-                gridColor = ContextCompat.getColor(requireContext(), R.color.md_theme_outlineVariant)
-                textColor = ContextCompat.getColor(requireContext(), R.color.text_secondary)
+                gridColor = ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOutlineVariant, R.color.md_theme_outlineVariant)
+                textColor = ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurfaceVariant, R.color.text_secondary)
                 axisMinimum = 0f
                 typeface = chartTypeface
-                axisLineColor = ContextCompat.getColor(requireContext(), R.color.md_theme_outlineVariant)
+                axisLineColor = ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOutlineVariant, R.color.md_theme_outlineVariant)
             }
 
             axisRight.isEnabled = false
@@ -456,8 +760,8 @@ class ReportFragment : Fragment() {
                         binding.barChartWeekly.highlightValue(null)
                         return
                     }
-                    val date = lastWeeklyDates.getOrNull(index) ?: return
-                    showDayRecords(date)
+                    val dayRange = lastWeeklyDayRanges.getOrNull(index) ?: return
+                    showDayRecords(dayRange)
                 }
 
                 override fun onNothingSelected() = Unit
@@ -466,67 +770,75 @@ class ReportFragment : Fragment() {
         }
     }
 
-    /** 点击柱状图的某一天：显示当天的支出记录。 */
-    private fun showDayRecords(date: String) {
-        val items = viewModel.historyList.value
-            ?.filter { it.isExpense && LedgerItemMappers.formatMillis(it.timeMillis).startsWith(date) }
-            ?: emptyList()
+    /**
+     * 点击柱状图的某一天：按需查询当天的支出记录。
+     *
+     * 明细不再从内存里的整表记录里筛，而是按 [DayRange] 的左闭右开区间直接查数据库，
+     * 且数据库已按时间倒序返回，这里只做展示格式转换。
+     */
+    private fun showDayRecords(dayRange: DayRange) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val items = reportViewModel.loadDayRecords(dayRange)
+            if (!isAdded) return@launch
 
-        if (items.isEmpty()) {
+            if (items.isEmpty()) {
+                AlertDialog.Builder(requireContext())
+                    .setTitle(dayRange.dateKey)
+                    .setMessage(getString(R.string.report_day_no_records))
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+                return@launch
+            }
+
+            val rows = items.joinToString("\n") { item ->
+                val time = LedgerItemMappers.formatMillis(item.timeMillis).substringAfter(' ')
+                val sign = if (item.isExpense) "-" else "+"
+                "${item.categoryName}　$sign${getString(R.string.currency_symbol)}${item.amount}　" +
+                    "${item.note.ifEmpty { "-" }}　$time"
+            }
+
             AlertDialog.Builder(requireContext())
-                .setTitle(date)
-                .setMessage(getString(R.string.report_day_no_records))
+                .setTitle(getString(R.string.report_day_records_title, dayRange.dateKey))
+                .setMessage(rows)
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
-            return
         }
-
-        // 按时间倒序展示
-        val sorted = items.sortedByDescending { it.timeMillis }
-        val rows = sorted.map { item ->
-            val time = LedgerItemMappers.formatMillis(item.timeMillis).substringAfter(' ')
-            val sign = if (item.isExpense) "-" else "+"
-            "${item.categoryName}　$sign${getString(R.string.currency_symbol)}${item.amount}　${item.note.ifEmpty { "-" }}　$time"
-        }.joinToString("\n")
-
-        AlertDialog.Builder(requireContext())
-            .setTitle(getString(R.string.report_day_records_title, date))
-            .setMessage(rows)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
     }
 
-    /** 点击饼图的某个分类：显示该分类在「当前所选时间范围」内的支出记录，与饼图口径保持一致。 */
+    /**
+     * 点击饼图的某个分类：按需查询该分类在「当前所选时间范围」内的支出记录。
+     *
+     * 时间范围由 [ReportViewModel.loadCategoryRecords] 用与饼图同一份状态计算，
+     * 保证「点进去看到的明细」与「饼图上的数字」口径一致。
+     */
     private fun showCategoryRecords(categoryName: String) {
-        val range = reportViewModel.currentPieRange.value ?: PieTimeRange.ALL
-        val items = viewModel.historyList.value
-            ?.let { LedgerStats.filterExpenseByRange(it, range) }
-            ?.filter { it.categoryName == categoryName }
-            ?: emptyList()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val items = reportViewModel.loadCategoryRecords(categoryName)
+            if (!isAdded) return@launch
 
-        if (items.isEmpty()) {
+            if (items.isEmpty()) {
+                AlertDialog.Builder(requireContext())
+                    .setTitle(categoryName)
+                    .setMessage(getString(R.string.report_category_no_records))
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+                return@launch
+            }
+
+            // 分类详情跨多天，带上完整日期与时间
+            val rows = items.joinToString("\n") { item ->
+                val time = LedgerItemMappers.formatMillis(item.timeMillis)
+                val sign = if (item.isExpense) "-" else "+"
+                "$sign${getString(R.string.currency_symbol)}${item.amount}　" +
+                    "${item.note.ifEmpty { "-" }}　$time"
+            }
+
             AlertDialog.Builder(requireContext())
-                .setTitle(categoryName)
-                .setMessage(getString(R.string.report_category_no_records))
+                .setTitle(getString(R.string.report_category_records_title, categoryName))
+                .setMessage(rows)
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
-            return
         }
-
-        // 按时间倒序展示
-        val sorted = items.sortedByDescending { it.timeMillis }
-        val rows = sorted.map { item ->
-            // 分类详情跨多天，带上完整日期与时间
-            val time = LedgerItemMappers.formatMillis(item.timeMillis)
-            val sign = if (item.isExpense) "-" else "+"
-            "$sign${getString(R.string.currency_symbol)}${item.amount}　${item.note.ifEmpty { "-" }}　$time"
-        }.joinToString("\n")
-
-        AlertDialog.Builder(requireContext())
-            .setTitle(getString(R.string.report_category_records_title, categoryName))
-            .setMessage(rows)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
     }
 
     private fun updatePieChart(entries: List<PieEntry>) {
@@ -548,7 +860,7 @@ class ReportFragment : Fragment() {
             colors = chartColors
             sliceSpace = 3f
             valueTextSize = 11f
-            valueTextColor = ContextCompat.getColor(requireContext(), R.color.text_primary)
+            valueTextColor = ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurface, R.color.text_primary)
             valueTypeface = chartTypeface
             valueFormatter = decimalFormatter
         }
@@ -568,8 +880,8 @@ class ReportFragment : Fragment() {
         }
 
         val dataSet = BarDataSet(entries, "").apply {
-            color = ContextCompat.getColor(requireContext(), R.color.md_theme_primary)
-            valueTextColor = ContextCompat.getColor(requireContext(), R.color.text_primary)
+            color = ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorPrimary, R.color.md_theme_primary)
+            valueTextColor = ThemeColors.of(requireContext(), com.google.android.material.R.attr.colorOnSurface, R.color.text_primary)
             valueTextSize = 10f
             valueTypeface = chartTypeface
             valueFormatter = decimalFormatter
@@ -607,6 +919,16 @@ class ReportFragment : Fragment() {
 
                     R.id.action_import -> {
                         importData()
+                        true
+                    }
+
+                    R.id.action_import_csv -> {
+                        importCsv()
+                        true
+                    }
+
+                    R.id.action_auto_backup -> {
+                        showAutoBackupDialog()
                         true
                     }
 

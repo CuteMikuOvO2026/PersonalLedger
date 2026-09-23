@@ -49,12 +49,15 @@ class CategoryAdapter(
             binding.categoryIcon.setImageResource(category.iconRes)
             binding.categoryName.text = category.name
 
+            // 选中态的底色刻意**不迁移**到主题属性：它是「中等蓝底 + 深色文字」的固定配色，
+            // 对比度优于 Material 的 primary / onPrimary 组合（浅色模式下 colorOnPrimary 是白字，
+            // 压在 #2E9BE0 上反而更难读），而且这个颜色在深色模式下也没有单独取值。
             val selectedBackground = ContextCompat.getColor(context, R.color.surface_chip_selected)
-            val selectedText = ContextCompat.getColor(context, R.color.text_primary)
+            val selectedText = ThemeColors.of(context, com.google.android.material.R.attr.colorOnSurface, R.color.text_primary)
             // 未选中态按分类取色：同色系淡底 + 分类强调色图标（自定义分类用用户所选颜色）
             val defaultBackground = CategoryColors.containerFor(category.name, category.color)
             val defaultIcon = CategoryColors.accentFor(category.name, category.color)
-            val defaultText = ContextCompat.getColor(context, R.color.text_secondary)
+            val defaultText = ThemeColors.of(context, com.google.android.material.R.attr.colorOnSurfaceVariant, R.color.text_secondary)
 
             if (isSelected) {
                 binding.categoryIconContainer.setCardBackgroundColor(selectedBackground)
