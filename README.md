@@ -50,6 +50,7 @@ Kotlin · AndroidX (Activity / Fragment / Lifecycle ViewModel / LiveData) · Roo
 - `HomeInsights`：首页洞察的纯计算（最高支出分类 / 日均支出 / 环比），日均按「本月已过天数」摊，上月无支出时环比返回 `null` 而不是编造百分比。
 - `LedgerDateTime`：日期 / 时刻选择器与本地时间戳的换算。**关键坑**：`MaterialDatePicker` 用 **UTC 零点**表示日期，直接当本地时间戳用会整体偏移一天（东八区表现为「选了 3 月 1 日却存成 2 月 28 日」）。
 - `CsvLedgerParser`：CSV 的解析与转换纯函数——`parse` 只管切表（支持引号包裹、字段内逗号换行、`""` 转义、CRLF、BOM），`suggestMapping` 按表头猜列，两者分离才能同时接住自家导出与其他 App 的格式。
+- `LedgerNotificationListenerService` / `NotificationPaymentParser` / `AutoBookkeepingRules`：自动记账三件套。服务只负责取通知字段、两级去重（内存 LRU + 数据库时间窗）与入库；`NotificationPaymentParser` 是**无 Android 依赖**的纯解析（金额 / 收支方向 / 分类 / 备注），因此能用真实通知文本做 JVM 单测（`NotificationPaymentParserTest`）；`AutoBookkeepingRules` 提供「收款方关键词 → 分类」规则表。**同步约定**：`NotificationPaymentParser.INCOME_WORDS` 必须覆盖 `AutoBookkeepingRules.incomeRules` 的关键词，否则会出现「分类判收入、方向判支出」的自相矛盾（如「工资代发」）；该不变式由 `NotificationPaymentParserTest` 里的守护用例强制。
 - `LedgerRepository`：账本条目与预算走 Room，自定义分类 / 自动记账开关 / 主题模式走 DataStore，并负责跨存储的一次性搬迁（DataStore JSON 历史 → Room；旧月度总预算 → `budgets` 表）；筛选、排序与分页（`LIMIT/OFFSET`）、首页统计、报表聚合与下钻查询均已下推到 Room `@Query`。**刻意不提供「整表响应式读取」入口**：任何界面都不需要把 `ledger_entries` 整表读进内存，只有备份 / CSV 导出用一次性的挂起函数取全量。
 - `BudgetAlertWorker` / `AutoBackupWorker`：两个 WorkManager 定时任务（预算预警检查、每日自动备份），均用 `KEEP` 策略入队，因此 `App.onCreate` 可以无条件同步而不重置计时；去重与开关状态存在 SharedPreferences（后台需要同步读取）。
 - `LedgerPaging`：首页每页条数（10 条）与页码 / 偏移量换算的纯函数，便于单元测试。
@@ -75,6 +76,8 @@ app/
     BudgetAlertSettings.kt / BudgetAlertNotifier.kt / BudgetAlertWorker.kt  # 预算预警
     AutoBackupWorker.kt                                         # 自动本地备份
     HomeInsight.kt / CsvLedgerParser.kt / LedgerDateTime.kt     # 洞察 / CSV 解析 / 时间换算
+    LedgerNotificationListenerService.kt / NotificationPaymentParser.kt / AutoBookkeepingRules.kt
+                                                                # 自动记账（通知监听 / 解析 / 分类规则）
     CategoryItem.kt / CategoryColors.kt / CategoryAdapter.kt    # 分类模型 / 配色
     ThemeSettings.kt / ThemeColors.kt / App.kt                  # 主题 / 主题色解析 / 启动应用
     LedgerItem.kt / LedgerEntryEntity.kt / LedgerEntryDao.kt ... # 数据模型
@@ -83,7 +86,7 @@ app/
   src/main/res/                               # 布局、图标、字体、动画、菜单等资源
   schemas/                                    # KSP 导出的 Room schema（含迁移测试用历史版本）
   src/androidTest/                            # 仪器化测试（Room 迁移校验）
-  src/test/                                   # 单元测试（统计 / 预算 / 洞察 / CSV / 时间换算）
+  src/test/                                   # 单元测试（统计 / 预算 / 洞察 / CSV / 时间换算 / 自动记账解析）
   build.gradle.kts                            # app 模块构建配置
 gradle/libs.versions.toml                     # 版本目录（version catalog）
 Database_Table_Design.md                      # 数据表设计说明（Room 现状 + 关系型扩展设计）
@@ -97,6 +100,11 @@ tools/generate_project_summary_doc.py         # 项目总结文档生成脚本
 - 前置：需在系统「通知使用权」中为本应用授权，并在 App 内打开开关。
 - 说明：**仅个人自用 / 非上架**方可使用（涉及隐私与平台条款）；受通知内容限制，无法识别全部交易，建议核对。
 - 分类：按“收款方关键词→分类”规则自动归类，未命中则归入「其他」。
+- 方向：金额与收支方向由通知正文的关键词投票判定，票数相同时按支出兜底。投票前会先抹掉**来源标签**
+  （「微信收款助手」「微信支付」「支付宝」「云闪付」「微信」），否则应用名自带的「支付」等于给每条通知
+  白送一张支出票——曾把「收到转账」这类只带一个收入信号的通知平票判成支出。
+- 测试：解析逻辑已抽成无 Android 依赖的 `NotificationPaymentParser`，由 `NotificationPaymentParserTest`
+  用真实微信 / 支付宝通知文本做回归。
 
 ## 说明
 
