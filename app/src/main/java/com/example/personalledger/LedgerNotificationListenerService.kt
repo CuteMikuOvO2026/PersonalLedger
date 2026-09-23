@@ -10,7 +10,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.util.LinkedHashMap
 import java.util.UUID
-import kotlin.math.roundToLong
 
 /**
  * 自动记账：监听微信 / 支付宝的支付成功通知，解析金额与收支方向，
@@ -58,7 +57,7 @@ class LedgerNotificationListenerService : NotificationListenerService() {
         if (sub.isBlank()) sub = extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString().orEmpty()
 
         val full = "$title\n$text\n$bigText\n$sub"
-        val parsed = parsePayment(full) ?: return
+        val parsed = NotificationPaymentParser.parse(full) ?: return
 
         val now = System.currentTimeMillis()
         val contentKey = "$pkg:${parsed.amountCents}:${parsed.isExpense}:${parsed.note}"
@@ -76,7 +75,8 @@ class LedgerNotificationListenerService : NotificationListenerService() {
                 timeMillis = now,
                 isExpense = parsed.isExpense,
                 categoryName = parsed.categoryName,
-                categoryIconRes = parsed.iconRes
+                // 图标按分类名解析，与列表渲染走同一条路径（见 CategoryColors.iconResFor）
+                categoryIconRes = CategoryColors.iconResFor(parsed.categoryName)
             )
             repository.add(item)
             markRecent(contentKey, now)
@@ -84,59 +84,9 @@ class LedgerNotificationListenerService : NotificationListenerService() {
     }
 
     // ---------- 解析 ----------
-
-    private data class Parsed(
-        val amountCents: Long,
-        val isExpense: Boolean,
-        val categoryName: String,
-        val iconRes: Int,
-        val note: String
-    )
-
-    private fun parsePayment(text: String): Parsed? {
-        val amountCents = extractAmountCents(text) ?: return null
-        val isExpense = detectDirection(text)
-        val rule = if (isExpense) AutoBookkeepingRules.matchExpense(text)
-            else AutoBookkeepingRules.matchIncome(text)
-        val categoryName = rule?.name ?: "其他"
-        val iconRes = rule?.iconRes ?: R.drawable.ic_other
-        val note = buildNote(text)
-        return Parsed(amountCents, isExpense, categoryName, iconRes, note)
-    }
-
-    private fun extractAmountCents(text: String): Long? {
-        val cleaned = text.replace(",", "")
-        val patterns = listOf(
-            Regex("""[¥￥]\s*([0-9]+(?:\.[0-9]{1,2})?)"""),
-            Regex("""([0-9]+(?:\.[0-9]{1,2})?)\s*元""")
-        )
-        for (pattern in patterns) {
-            val match = pattern.find(cleaned) ?: continue
-            val amount = match.groupValues[1].toDoubleOrNull() ?: continue
-            if (amount > 0) return (amount * 100).roundToLong()
-        }
-        return null
-    }
-
-    /** 返回 true 表示支出，false 表示收入；无明确信号时默认支出。 */
-    private fun detectDirection(text: String): Boolean {
-        val expenseWords = listOf("支付", "付款", "支出", "消费", "已付款", "付款成功", "成功付款", "已支付", "支付成功", "转账支出", "扣款")
-        val incomeWords = listOf("收款", "到账", "入账", "收到", "已收款", "收入", "进账", "红包", "转入", "退回")
-        val expenseHits = expenseWords.count { text.contains(it) }
-        val incomeHits = incomeWords.count { text.contains(it) }
-        return !(incomeHits > expenseHits)
-    }
-
-    private fun buildNote(text: String): String {
-        // 优先取方括号/书名号内的“收款方名称”。
-        val bracketMatch = Regex("""[\[\u3010]([^\]\u3011]{1,24})[\]\u3011]""").find(text)
-        if (bracketMatch != null) {
-            val name = bracketMatch.groupValues[1].trim()
-            if (name.isNotEmpty()) return name
-        }
-        val cleaned = text.replace("\n", " ").replace(Regex("""\s+"""), " ").trim()
-        return cleaned.take(60)
-    }
+    //
+    // 解析逻辑（金额提取 / 收支方向判定 / 分类匹配 / 备注生成）已抽到
+    // [NotificationPaymentParser]，以便用真实通知文本做 JVM 单测。
 
     // ---------- 去重 ----------
 
