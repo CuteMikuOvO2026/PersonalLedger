@@ -1,8 +1,9 @@
 # PersonalLedger 数据库表设计（Markdown版）
 
 说明：
-- 当前版本账本条目已迁移到 **Room**，实际表为 `ledger_entries`（见「表 3-2」），金额以“分”（`Long`）存储、时间以 epoch 毫秒存储；月预算与自定义分类仍由 **DataStore Preferences** 保存（即概念上等价于 `app_settings` 的轻量版本）。
-- 本文档其余各表（`users`、`categories`、`budgets`、`daily_stats`、`monthly_stats`、`operation_logs`）为按关系型数据库规范整理的**扩展设计**，用于说明后续从轻量本地存储升级到规范化数据层时的落地方案。
+- 当前版本账本条目与预算规则已迁移到 **Room**，实际表为 `ledger_entries`（见「表 3-2」，schema v3，含 4 个索引）与 `budgets`（见「表 3-4」），金额统一以“分”（`Long`）存储、时间以 epoch 毫秒存储；自定义分类、主题模式与各项开关仍由 **DataStore Preferences** 保存（即概念上等价于 `app_settings` 的轻量版本）。
+- 本文档其余各表（`users`、`categories`、`daily_stats`、`monthly_stats`、`app_settings`、`operation_logs`）为按关系型数据库规范整理的**扩展设计**，用于说明后续从轻量本地存储升级到规范化数据层时的落地方案。
+- 升级约定：任何改动实体（字段 / 索引 / 表）的提交都必须同时升 `AppDatabase` 版本号、补一条 `Migration`，并把 KSP 导出的 `app/schemas/<版本>.json` 一并提交。
 
 ## 表 3-1 用户表（`users`）
 
@@ -27,6 +28,15 @@
 | 6 | category_name | text | 非空 | 分类名称 |
 | 7 | category_icon_res | integer | 非空 | 分类图标资源 ID |
 
+索引（4 个，每个都对应一类真实查询）：
+
+| 索引 | 服务的查询 |
+|---|---|
+| `time_millis` | 首页默认分页 `ORDER BY timeMillis DESC`、日期区间筛选 |
+| `is_expense + time_millis` | 首页今日 / 本月聚合、报表 7 天分桶、按收支筛选 |
+| `category_name + time_millis` | 分类筛选翻页、首页分类去重候选 |
+| `is_expense + category_name + time_millis` | 报表饼图 `GROUP BY category_name`、分类下钻 |
+
 ## 表 3-3 分类表（`categories`）
 
 | 序号 | 字段名称 | 数据类型 | 字段约束 | 字段内容 |
@@ -39,17 +49,25 @@
 | 6 | is_default | tinyint(1) | 非空，默认0 | 是否默认分类 |
 | 7 | created_at | timestamp | 非空，默认当前时间 | 创建时间 |
 
-## 表 3-4 预算表（`budgets`）
+## 表 3-4 预算表（`budgets`，当前 Room 实体 `BudgetEntity`）
+
+预算存的是一条**长期生效的规则**，而不是「每个周期一条记录」：「餐饮每月 1500」就是一条规则，
+每个周期的进度都用**当期支出实时计算**，因此不需要为每个月建行，也不需要定期生成数据。
 
 | 序号 | 字段名称 | 数据类型 | 字段约束 | 字段内容 |
 |---|---|---|---|---|
-| 1 | id | bigint | 主键，自增 | 预算ID |
-| 2 | user_id | bigint | 非空，外键->users.id | 用户ID |
-| 3 | period_type | varchar(16) | 非空 | 周期类型（月/周/日） |
-| 4 | period_value | varchar(32) | 非空 | 周期值（如2026-05） |
-| 5 | budget_amount | decimal(12,2) | 非空 | 预算金额 |
-| 6 | created_at | timestamp | 非空，默认当前时间 | 创建时间 |
-| 7 | updated_at | timestamp | 非空，默认当前时间 | 更新时间 |
+| 1 | period_type | text | 复合主键，非空 | 周期类型（月 / 周），取值见 `BudgetPeriod.key` |
+| 2 | category_name | text | 复合主键，非空 | 分类名；**空串**表示「不限分类」的总预算 |
+| 3 | limit_cents | bigint | 非空 | 限额（单位：分，与账目金额同单位，避免浮点误差） |
+
+> 主键用 `(period_type, category_name)` 复合键而不是自增 `id`：「同一周期 + 同一分类」在语义上
+> 只能有一条规则，让主键直接表达这个约束，就不会出现重复规则。
+>
+> **关系型扩展设计（尚未实现）**：若将来引入多用户与「周期快照」需求，可改为
+> `id` 自增主键 + `user_id` 外键 + `period_value`（如 `2026-05`）+ `budget_amount decimal(12,2)`
+> + `created_at` / `updated_at`，为每个周期固化一行，便于按周期回看历史预算。
+> 当前实现之所以不这么做，是因为「回看历史预算」目前没有需求，而存规则 + 实时计算
+> 可以少维护一张会随周期不断增长的表。
 
 ## 表 3-5 每日统计表（`daily_stats`）
 

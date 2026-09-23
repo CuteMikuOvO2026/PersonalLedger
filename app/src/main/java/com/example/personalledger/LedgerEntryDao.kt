@@ -162,6 +162,15 @@ interface LedgerEntryDao {
         dateTo: Long?
     ): Flow<Int>
 
+    /**
+     * 全表条数。
+     *
+     * 只用于「账本为空时不要导出空文件」这类一次性判断，因此是挂起函数而非 Flow——
+     * 界面不需要持续观察它。
+     */
+    @Query("SELECT COUNT(*) FROM ledger_entries")
+    suspend fun countAll(): Int
+
     /** 首页筛选弹窗的分类候选（按最近使用时间倒序，等价于历史记录的“分类去重”）。 */
     @Query(
         """

@@ -218,13 +218,36 @@ class ReportFragment : Fragment() {
     }
 
     fun exportCsv() {
-        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        createCsvLauncher.launch(getString(R.string.csv_file_name, stamp))
+        viewModel.hasAnyEntry { hasAny ->
+            if (!hasAny) {
+                toastEmptyLedger()
+                return@hasAnyEntry
+            }
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            createCsvLauncher.launch(getString(R.string.csv_file_name, stamp))
+        }
     }
 
     fun exportPdf() {
-        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        createPdfLauncher.launch(getString(R.string.pdf_file_name, stamp))
+        viewModel.hasAnyEntry { hasAny ->
+            if (!hasAny) {
+                toastEmptyLedger()
+                return@hasAnyEntry
+            }
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            createPdfLauncher.launch(getString(R.string.pdf_file_name, stamp))
+        }
+    }
+
+    /**
+     * 账本为空时不去拉系统文件选择器。
+     *
+     * 既避免生成一个只有表头的空文件，也避免给出「导出成功」这种与事实相反的提示；
+     * 判断放在拉起选择器**之前**，就不会留下半截文件。
+     */
+    private fun toastEmptyLedger() {
+        Toast.makeText(requireContext(), getString(R.string.export_empty_ledger), Toast.LENGTH_SHORT)
+            .show()
     }
 
     private fun saveCsvTo(uri: Uri) {

@@ -22,6 +22,8 @@
 /qa_table_design
 /scratch
 /tmp_*
+__pycache__/
+*.pyc
 
 # Artifacts
 *.apk

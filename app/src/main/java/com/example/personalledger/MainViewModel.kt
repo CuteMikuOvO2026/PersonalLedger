@@ -393,6 +393,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.resetAll() }
     }
 
+    /**
+     * 账本里是否有任何记录。
+     *
+     * 导出（CSV / PDF）前先问一次：账本为空时不该生成只有表头的文件，
+     * 更不该提示「导出成功」。用计数查询而不是读全表，避免为了一个布尔值把整表拉进内存。
+     */
+    fun hasAnyEntry(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch { onResult(repository.hasAnyEntry()) }
+    }
+
     fun getCsvString(onResult: (String) -> Unit) {
         viewModelScope.launch { onResult(repository.getCsvString()) }
     }

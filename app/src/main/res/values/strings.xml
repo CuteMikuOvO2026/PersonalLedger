@@ -159,6 +159,7 @@
     <string name="auto_backup_restore_confirm">将用这份备份覆盖当前全部数据，确定继续吗？</string>
     <string name="auto_backup_file_time">%1$s</string>
     <string name="export_csv_success">CSV 导出成功</string>
+    <string name="export_empty_ledger">账本还没有记录，无需导出</string>
     <string name="cancel">取消</string>
     <string name="confirm">确定</string>
     <string name="date_filter">日期筛选</string>

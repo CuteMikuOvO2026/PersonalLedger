@@ -102,6 +102,13 @@ class LedgerRepository(context: Context) {
         dao.getAll().map { LedgerItemMappers.entityToItem(it) }
 
     /**
+     * 账本里是否有任何记录。
+     *
+     * 供「账本为空时不要导出」这类判断使用——比 [getAll] 少一次整表读取与映射。
+     */
+    suspend fun hasAnyEntry(): Boolean = dao.countAll() > 0
+
+    /**
      * 批量追加账目（CSV 导入用）。
      *
      * 刻意与 [restoreBackup] 区分开：导入 CSV 是**合并**，不会清空现有记录；

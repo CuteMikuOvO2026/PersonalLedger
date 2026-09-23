@@ -42,7 +42,7 @@ Kotlin · AndroidX (Activity / Fragment / Lifecycle ViewModel / LiveData) · Roo
 单模块工程，入口模块为 `app`，遵循 ViewModel + Repository 分层：
 
 - `App`（`Application`）：启动时**非阻塞**地应用已保存的主题模式，避免主线程卡顿；按开关状态注册 Material You 动态取色（用 `precondition` 表达开关，切换后只需重建 Activity 即可生效），并同步两个定时任务的排期。
-- `MainActivity`：主导航容器，通过底部导航在「记账（HomeFragment）」与「报表（ReportFragment）」间切换；`attachBaseContext` 只锁定中文文案，**字体缩放交给系统**（上限 1.3×，原因见 [MAX_FONT_SCALE]）。
+- `MainActivity`：主导航容器，通过底部导航在「记账（HomeFragment）」与「报表（ReportFragment）」间切换；`attachBaseContext` 只锁定中文文案，**字体缩放交给系统**（上限 1.3×，原因见 `MainActivity.MAX_FONT_SCALE` 处的注释）。
 - `MainViewModel`（`AndroidViewModel`）：统一管理账本数据、首页统计、**预算规则与执行情况**、**首页洞察**、筛选状态、**首页分页状态**、分类、自动记账开关与主题模式，通过 LiveData 驱动界面刷新；首页统计由 Room 聚合得出（收入、支出**各发一条按方向 + 本月区间的范围查询**，时间条件放在 `WHERE` 里以便走索引，再由 `LedgerStats.buildHomeTotals` 组装），首页列表只读取当前页；启动时监听自定义分类并将配色注册到 `CategoryColors`。
 - `ReportViewModel`（`AndroidViewModel`）：报表页专用，图表与摘要**全部由 Room 聚合得出**（`GROUP BY categoryName` / 7 个 `SUM(CASE WHEN ...)` 分桶 / 全表收支合计），不再读取整表；点击某天或某分类时再按需查询明细。**饼图时间范围**由独立的 `pieTimeRange` 状态流驱动，与柱状图解耦；「今天」锚点（`dayAnchor`）在 `onResume` 刷新，保证跨零点后两个图表的窗口一起前移。
 - `LedgerStats`：统计与报表的纯函数工具，分两类职责——**时间窗口**（`PieTimeRange` 枚举、`currentStatsRanges`、`todayRange` / `monthRange` / `weekRange` / `lastMonthRange`、`weeklyDayRanges`、`rangeStartMillisOrNull`、`startOfDay`、`periodKey`，统一按本地时区对齐自然边界）与**聚合结果换算**（`buildHomeTotals` / `buildHomeStats` / `buildPieEntries` / `buildWeeklyBarEntries` / `buildReportSummary`）。另有若干 `getXxx(list)` 形式的内存版实现，仅用于与数据库聚合结果**对拍**（见 `LedgerStatsAggregationTest`），保证两条路径数字一致。
