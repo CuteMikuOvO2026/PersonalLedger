@@ -148,7 +148,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val autoBookkeepingEnabled: LiveData<Boolean> = repository.autoBookkeepingEnabled.asLiveData()
 
-    val themeMode: LiveData<String> = repository.themeMode.asLiveData()
+    /**
+     * 当前主题模式，供「外观」弹窗回显。
+     *
+     * 刻意用 StateFlow 而不是 `Flow.asLiveData()`：后者只有在**有活跃观察者**时才开始收集，
+     * 而「外观」弹窗是按需打开、直接读一次 `.value` 的，没有任何常驻观察者，
+     * 于是 `.value` 永远是 null、回显永远退回「跟随系统」——这正是本 bug 的成因。
+     * StateFlow 的值与有没有人订阅无关，随时可读，且初值直接取自 [ThemeSettings] 的同步读取。
+     */
+    private val themeModeState = MutableStateFlow(ThemeSettings.savedMode(getApplication()))
+
+    /** 对外只暴露只读的 StateFlow；写入统一走 [setThemeMode]。 */
+    val themeMode: StateFlow<String> = themeModeState
 
     init {
         // 让账目列表能按用户所选颜色解析自定义分类
@@ -158,10 +169,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setThemeMode(mode: String) {
-        // 同步写入 SharedPreferences（下次启动即时应用），再写入 DataStore（供 LiveData/备份）
-        ThemeSettings.saveMode(getApplication(), mode)
-        viewModelScope.launch { repository.saveThemeMode(mode) }
-        AppCompatDelegate.setDefaultNightMode(ThemeSettings.toNightMode(mode))
+        val normalized = ThemeSettings.normalize(mode)
+        // 1) 先同步落盘：下次冷启动时 Application.onCreate 能直接读到并应用
+        ThemeSettings.saveMode(getApplication(), normalized)
+        // 2) 再更新内存状态：弹窗关闭后重新打开能立刻回显用户的选择
+        themeModeState.value = normalized
+        // 3) 最后切换夜间模式：AppCompat 会自动重建当前 Activity，界面立即生效
+        AppCompatDelegate.setDefaultNightMode(ThemeSettings.toNightMode(normalized))
     }
 
     fun setAutoBookkeepingEnabled(enabled: Boolean) {

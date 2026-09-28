@@ -43,7 +43,7 @@ Kotlin · AndroidX (Activity / Fragment / Lifecycle ViewModel / LiveData) · Roo
 
 - `App`（`Application`）：启动时**非阻塞**地应用已保存的主题模式，避免主线程卡顿；按开关状态注册 Material You 动态取色（用 `precondition` 表达开关，切换后只需重建 Activity 即可生效），并同步两个定时任务的排期。
 - `MainActivity`：主导航容器，通过底部导航在「记账（HomeFragment）」与「报表（ReportFragment）」间切换；`attachBaseContext` 锁定中文文案并把 `fontScale` 固定为 **1.0×**（原因见该方法内的注释）。
-- `MainViewModel`（`AndroidViewModel`）：统一管理账本数据、首页统计、**预算规则与执行情况**、**首页洞察**、筛选状态、**首页分页状态**、分类、自动记账开关与主题模式，通过 LiveData 驱动界面刷新；首页统计由 Room 聚合得出（收入、支出**各发一条按方向 + 本月区间的范围查询**，时间条件放在 `WHERE` 里以便走索引，再由 `LedgerStats.buildHomeTotals` 组装），首页列表只读取当前页；启动时监听自定义分类并将配色注册到 `CategoryColors`。
+- `MainViewModel`（`AndroidViewModel`）：统一管理账本数据、首页统计、**预算规则与执行情况**、**首页洞察**、筛选状态、**首页分页状态**、分类、自动记账开关与主题模式，通过 LiveData 驱动界面刷新（**主题模式是 `StateFlow`**：它没有常驻观察者，而「外观」弹窗要随时读一次当前值，`Flow.asLiveData()` 在无人订阅时 `.value` 恒为 null，正是「始终显示跟随系统」的成因）；首页统计由 Room 聚合得出（收入、支出**各发一条按方向 + 本月区间的范围查询**，时间条件放在 `WHERE` 里以便走索引，再由 `LedgerStats.buildHomeTotals` 组装），首页列表只读取当前页；启动时监听自定义分类并将配色注册到 `CategoryColors`。
 - `ReportViewModel`（`AndroidViewModel`）：报表页专用，图表与摘要**全部由 Room 聚合得出**（`GROUP BY categoryName` / 7 个 `SUM(CASE WHEN ...)` 分桶 / 全表收支合计），不再读取整表；点击某天或某分类时再按需查询明细。**饼图时间范围**由独立的 `pieTimeRange` 状态流驱动，与柱状图解耦；「今天」锚点（`dayAnchor`）在 `onResume` 刷新，保证跨零点后两个图表的窗口一起前移。
 - `LedgerStats`：统计与报表的纯函数工具，分两类职责——**时间窗口**（`PieTimeRange` 枚举、`currentStatsRanges`、`todayRange` / `monthRange` / `weekRange` / `lastMonthRange`、`weeklyDayRanges`、`rangeStartMillisOrNull`、`startOfDay`、`periodKey`，统一按本地时区对齐自然边界）与**聚合结果换算**（`buildHomeTotals` / `buildHomeStats` / `buildPieEntries` / `buildWeeklyBarEntries` / `buildReportSummary`）。另有若干 `getXxx(list)` 形式的内存版实现，仅用于与数据库聚合结果**对拍**（见 `LedgerStatsAggregationTest`），保证两条路径数字一致。
 - `BudgetStats` / `BudgetRule` / `BudgetEntity` / `BudgetDao`：预算规则与执行情况的纯计算。预算存的是一条**长期生效的规则**（`(周期, 分类)` 复合主键），当期进度用当期支出实时算，不为每个周期建行。状态阈值（80% 预警 / 100% 超支）只存在于 `BudgetStats` 一处，进度条配色与提醒共用。
@@ -51,16 +51,16 @@ Kotlin · AndroidX (Activity / Fragment / Lifecycle ViewModel / LiveData) · Roo
 - `LedgerDateTime`：日期 / 时刻选择器与本地时间戳的换算。**关键坑**：`MaterialDatePicker` 用 **UTC 零点**表示日期，直接当本地时间戳用会整体偏移一天（东八区表现为「选了 3 月 1 日却存成 2 月 28 日」）。
 - `CsvLedgerParser`：CSV 的解析与转换纯函数——`parse` 只管切表（支持引号包裹、字段内逗号换行、`""` 转义、CRLF、BOM），`suggestMapping` 按表头猜列，两者分离才能同时接住自家导出与其他 App 的格式。
 - `LedgerNotificationListenerService` / `NotificationPaymentParser` / `AutoBookkeepingRules`：自动记账三件套。服务只负责取通知字段、两级去重（内存 LRU + 数据库时间窗）与入库；`NotificationPaymentParser` 是**无 Android 依赖**的纯解析（金额 / 收支方向 / 分类 / 备注），因此能用真实通知文本做 JVM 单测（`NotificationPaymentParserTest`）；`AutoBookkeepingRules` 提供「收款方关键词 → 分类」规则表。**同步约定**：`NotificationPaymentParser.INCOME_WORDS` 必须覆盖 `AutoBookkeepingRules.incomeRules` 的关键词，否则会出现「分类判收入、方向判支出」的自相矛盾（如「工资代发」）；该不变式由 `NotificationPaymentParserTest` 里的守护用例强制。
-- `LedgerRepository`：账本条目与预算走 Room，自定义分类 / 自动记账开关 / 主题模式走 DataStore，并负责跨存储的一次性搬迁（DataStore JSON 历史 → Room；旧月度总预算 → `budgets` 表）；筛选、排序与分页（`LIMIT/OFFSET`）、首页统计、报表聚合与下钻查询均已下推到 Room `@Query`。**刻意不提供「整表响应式读取」入口**：任何界面都不需要把 `ledger_entries` 整表读进内存，只有备份 / CSV 导出用一次性的挂起函数取全量。
+- `LedgerRepository`：账本条目与预算走 Room，自定义分类 / 自动记账开关走 DataStore（**主题模式不经过这里**，见 `ThemeSettings`），并负责跨存储的一次性搬迁（DataStore JSON 历史 → Room；旧月度总预算 → `budgets` 表）；筛选、排序与分页（`LIMIT/OFFSET`）、首页统计、报表聚合与下钻查询均已下推到 Room `@Query`。**刻意不提供「整表响应式读取」入口**：任何界面都不需要把 `ledger_entries` 整表读进内存，只有备份 / CSV 导出用一次性的挂起函数取全量。
 - `BudgetAlertWorker` / `AutoBackupWorker`：两个 WorkManager 定时任务（预算预警检查、每日自动备份），均用 `KEEP` 策略入队，因此 `App.onCreate` 可以无条件同步而不重置计时；去重与开关状态存在 SharedPreferences（后台需要同步读取）。
 - `LedgerPaging`：首页每页条数（10 条）与页码 / 偏移量换算的纯函数，便于单元测试。
 - `CategoryColors`：分类配色方案（内置分类色映射 + 自定义分类颜色注册表 + 选择色板）。
 - `ThemeColors`：主题属性色解析，让界面颜色跟随主题（进而支持动态取色）。
-- `ThemeSettings`：主题模式（浅色 / 深色 / 跟随系统）与动态取色开关的即时存储。
+- `ThemeSettings`：主题模式（浅色 / 深色 / 跟随系统）与动态取色开关的**唯一存储**（SharedPreferences，同步读写）。主题模式必须在 `App.onCreate` 里**同步**读取才能避免启动闪白，异步的 DataStore 做不到，因此不再另存一份——两份迟早不一致，界面回显与实际生效的值就会打架。
 - 数据持久化：
   - **Room**：`ledger_entries` 表（金额以“分”`Long` 存储避免浮点误差，时间以 epoch 毫秒存储）+ `budgets` 表。当前 schema 版本 **v3**；`ledger_entries` 建了 4 个索引（`timeMillis`、`isExpense+timeMillis`、`categoryName+timeMillis`、`isExpense+categoryName+timeMillis`）支撑分页排序、日期区间筛选与报表分组。
   - **升级约定**：任何改动实体（字段 / 索引 / 表）的提交都必须**同时**升 `AppDatabase` 版本号、补一条 `Migration`、并把 KSP 导出的 `app/schemas/<版本>.json` 一并提交；`AppDatabaseMigrationTest` 会用 `MigrationTestHelper` 逐段校验迁移结果与导出的 schema 完全一致。
-  - **DataStore Preferences**：保存自定义分类（含所选颜色）、自动记账开关与主题模式；主题模式另用 SharedPreferences 即时镜像，便于启动时同步读取。
+  - **DataStore Preferences**：保存自定义分类（含所选颜色）与自动记账开关。**主题模式不在这里**，它只存一份在 `ThemeSettings` 的 SharedPreferences 里（启动时需同步读取，异步的 DataStore 做不到）。
   - 备份格式为 JSON（`BackupData`，version 3），含条目、**预算规则列表**与自定义分类；读取 v2 及更早的备份时会用旧的单个 `budget` 值补一条月度总预算，保证老备份不丢预算。备份字段刻意声明为**可空**——Gson 反序列化 Kotlin data class 时不执行构造器与默认值，缺失字段会是 `null` 而非默认值。
 
   
@@ -89,7 +89,6 @@ app/
   src/test/                                   # 单元测试（统计 / 预算 / 洞察 / CSV / 时间换算 / 自动记账解析）
   build.gradle.kts                            # app 模块构建配置
 gradle/libs.versions.toml                     # 版本目录（version catalog）
-Database_Table_Design.md                      # 数据表设计说明（Room 现状 + 关系型扩展设计）
 tools/generate_project_summary_doc.py         # 项目总结文档生成脚本
 ```
 

@@ -19,10 +19,14 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 /**
- * 仅负责轻量设置的持久化：自定义分类、自动记账开关、主题模式。
+ * 仅负责轻量设置的持久化：自定义分类、自动记账开关。
  *
  * 账本条目已迁移到 Room（见 [LedgerRepository]），预算也已迁移到 Room 的 `budgets` 表
  * （见 [BudgetEntity]）；这里保留旧的预算 key，仅用于一次性搬迁读取。
+ *
+ * 注意：**主题模式不在这里**，它只存一份在 [ThemeSettings] 的 SharedPreferences——
+ * 主题需要在 Application.onCreate 同步读取，异步的 DataStore 做不到，
+ * 存两份也会让界面回显与实际应用的值不一致。
  */
 class DataStoreManager(private val context: Context) {
 
@@ -35,7 +39,6 @@ class DataStoreManager(private val context: Context) {
         val LEGACY_BUDGET_KEY = intPreferencesKey("ledger_budget")
         val CUSTOM_CATEGORIES_KEY = stringPreferencesKey("custom_categories")
         val AUTO_BOOKKEEPING_KEY = booleanPreferencesKey("auto_bookkeeping_enabled")
-        val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
 
         // 旧的条目历史 key（仅迁移时读取）
         val LEGACY_HISTORY_LIST_KEY = stringPreferencesKey("ledger_history_list")
@@ -94,18 +97,6 @@ class DataStoreManager(private val context: Context) {
     suspend fun setAutoBookkeepingEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTO_BOOKKEEPING_KEY] = enabled
-        }
-    }
-
-    // ---------- 主题模式 ----------
-
-    val themeModeFlow: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[THEME_MODE_KEY] ?: ThemeSettings.SYSTEM
-    }
-
-    suspend fun saveThemeMode(mode: String) {
-        context.dataStore.edit { preferences ->
-            preferences[THEME_MODE_KEY] = mode
         }
     }
 

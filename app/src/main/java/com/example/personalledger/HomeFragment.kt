@@ -1,6 +1,7 @@
 package com.example.personalledger
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.net.Uri
@@ -758,21 +759,12 @@ class HomeFragment : Fragment() {
     private fun showThemeDialog() {
         val context = requireContext()
         val density = resources.displayMetrics.density
-        val current = viewModel.themeMode.value ?: ThemeSettings.SYSTEM
+        // 直接读 ViewModel 里由 ThemeSettings 同步播种的状态：无论有没有观察者，
+        // 值都是用户上次保存的那一档（不再依赖「被观察过」才拿得到值）。
+        val current = ThemeSettings.normalize(viewModel.themeMode.value)
 
         val selectedIndex = intArrayOf(ThemeSettings.indexOf(current))
-        val modeGroup = RadioGroup(context).apply {
-            orientation = RadioGroup.VERTICAL
-        }
-        ThemeSettings.labels().forEachIndexed { index, label ->
-            modeGroup.addView(
-                RadioButton(context).apply {
-                    text = label
-                    isChecked = index == selectedIndex[0]
-                    setOnClickListener { selectedIndex[0] = index }
-                }
-            )
-        }
+        val modeGroup = buildThemeModeRadioGroup(context, current) { selectedIndex[0] = it }
 
         val dynamicAvailable = ThemeSettings.isDynamicColorAvailable()
         val dynamicSwitch = SwitchMaterial(context).apply {
@@ -900,4 +892,45 @@ class HomeFragment : Fragment() {
         super.onDestroyView()
         _binding = null
     }
+}
+
+/**
+ * 构建「外观」弹窗里的主题模式单选项（跟随系统 / 浅色 / 深色）。
+ *
+ * 抽成独立的顶层函数是为了能被仪器化测试直接驱动：下面两条约束来自 `RadioGroup` 的
+ * 实现细节，任何一条写错都会表现为「选了别的档，原来那档还勾着」，也就是
+ * 「在切换深浅外观时始终显示跟随系统」这个 bug。
+ *
+ * 1. **每个 RadioButton 必须先分配 id 再 addView。**
+ *    `RadioGroup.addView` 在 `super.addView` 之前就读 `button.getId()`；此时未分配 id 的
+ *    子项返回 `View.NO_ID(-1)`，于是 RadioGroup 内部的 `mCheckedId` 被写成 -1。
+ *    而真正生成 id 的 `PassThroughHierarchyChangeListener.onChildViewAdded`
+ *    要等到 `super.addView` 阶段才执行，已经晚了一步。
+ *    此后用户点其它项时，`CheckedStateTracker` 会因为 `mCheckedId == -1` 而
+ *    **跳过「取消上一项勾选」**这一步，最初勾上的那一项就再也摘不掉。
+ * 2. **初始勾选必须在所有子项 addView 之后设置。**
+ *    理由同上：只有子项已经带着真实 id 挂在 RadioGroup 里，`isChecked = true` 触发的
+ *    `CheckedStateTracker` 才会把 `mCheckedId` 正确记录成该项的 id。
+ *
+ * @param current 当前已保存的主题模式，用于决定初始勾选项（内部会先做一次收敛）。
+ * @param onSelect 用户点选某一档时回调其下标，顺序与 [ThemeSettings.labels] 一致。
+ */
+internal fun buildThemeModeRadioGroup(
+    context: Context,
+    current: String,
+    onSelect: (Int) -> Unit = {}
+): RadioGroup {
+    val group = RadioGroup(context).apply { orientation = RadioGroup.VERTICAL }
+    val buttons = ThemeSettings.labels().mapIndexed { index, label ->
+        RadioButton(context).apply {
+            // 约束 1：id 必须在 addView 之前就绪，否则 RadioGroup 的互斥会失效。
+            id = View.generateViewId()
+            text = label
+            setOnClickListener { onSelect(index) }
+        }
+    }
+    buttons.forEach(group::addView)
+    // 约束 2：等全部子项都挂好（id 已就绪）之后再勾选初始项。
+    buttons[ThemeSettings.indexOf(ThemeSettings.normalize(current))].isChecked = true
+    return group
 }

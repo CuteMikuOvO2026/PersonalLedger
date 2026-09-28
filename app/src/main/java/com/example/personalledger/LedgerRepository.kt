@@ -49,7 +49,7 @@ class LedgerRepository(context: Context) {
 
     val autoBookkeepingEnabled: Flow<Boolean> = dataStoreManager.autoBookkeepingFlow
 
-    val themeMode: Flow<String> = dataStoreManager.themeModeFlow
+    // 主题模式不经过这里：它由 ThemeSettings 单独持久化（同步读写），避免出现两份不一致的值。
 
     init {
         migrateLegacyDataIfNeeded()
@@ -153,8 +153,6 @@ class LedgerRepository(context: Context) {
     }
 
     suspend fun setAutoBookkeepingEnabled(enabled: Boolean) = dataStoreManager.setAutoBookkeepingEnabled(enabled)
-
-    suspend fun saveThemeMode(mode: String) = dataStoreManager.saveThemeMode(mode)
 
     /** 判断在 [sinceMillis] 之后是否已存在同金额、同收支方向的记录，用于自动记账去重。 */
     suspend fun existsRecentEntry(amountCents: Long, isExpense: Boolean, sinceMillis: Long): Boolean =
