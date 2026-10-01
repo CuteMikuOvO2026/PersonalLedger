@@ -86,7 +86,7 @@ class LedgerNotificationListenerService : NotificationListenerService() {
     // ---------- 解析 ----------
     //
     // 解析逻辑（金额提取 / 收支方向判定 / 分类匹配 / 备注生成）已抽到
-    // [NotificationPaymentParser]，以便用真实通知文本做 JVM 单测。
+    // [NotificationPaymentParser]，本服务只负责取通知字段、去重与入库。
 
     // ---------- 去重 ----------
 

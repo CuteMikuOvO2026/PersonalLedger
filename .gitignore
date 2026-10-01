@@ -16,18 +16,6 @@
 /build
 /app/release
 
-# Generated / scratch dirs
-/output
-/qa_docx_render
-/qa_table_design
-/scratch
-/tmp_*
-__pycache__/
-*.pyc
-
 # Artifacts
 *.apk
 *.dm
-
-# OS
-.DS_Store

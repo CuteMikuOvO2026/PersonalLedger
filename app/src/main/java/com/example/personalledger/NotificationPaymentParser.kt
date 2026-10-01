@@ -7,9 +7,9 @@ import kotlin.math.roundToLong
  *
  * 从 [LedgerNotificationListenerService] 中抽出来的**纯函数**，原因有二：
  *
- * 1. 这段逻辑此前**零测试覆盖**，而它直接决定「自动记账记成什么」——
- *    金额算错、方向判反都会静默写进账本，用户很难察觉；
- * 2. 抽成无 Android 依赖的对象后，就能用真实通知文本做 JVM 回归测试。
+ * 1. 它直接决定「自动记账记成什么」—— 金额算错、方向判反都会静默写进账本，用户很难察觉，
+ *    因此必须是一段可独立审阅、可复用的解析逻辑，而不是埋在服务回调里；
+ * 2. 不依赖任何 Android 类型（连 `R` 都不碰），因此改动时可以用真实通知文本在 JVM 上复现。
  *
  * 解析结果刻意只给分类**名称**而不给图标资源：图标由 [CategoryColors.iconResFor]
  * 按名称解析，与列表渲染走同一条路径，纯逻辑因此不必依赖 Android 的 `R`。
@@ -61,8 +61,8 @@ object NotificationPaymentParser {
      *
      * [INCOME_WORDS] 需要覆盖 [AutoBookkeepingRules.incomeRules] 的关键词，
      * 否则会出现「被识别为收入分类、却被判成支出方向」的自相矛盾（如「工资代发」）。
-     * 唯一例外见 [AMBIGUOUS_INVESTMENT_KEYWORDS]，该不变式由
-     * `NotificationPaymentParserTest.incomeWordListCoversIncomeRules` 守护。
+     * 唯一例外见 [AMBIGUOUS_INVESTMENT_KEYWORDS]。
+     * **改动任一方的词表时都必须同步检查另一方**，这条不变式没有任何自动化兜底。
      *
      * 注意区分两类词：**方向词**（钱往哪走：扣款 / 到账）和**标的词**（买了什么：股票 / 基金）。
      * 只有前者能进这里——见 [AMBIGUOUS_INVESTMENT_KEYWORDS]。
@@ -95,9 +95,8 @@ object NotificationPaymentParser {
      * 却是不折不扣的支出；而把「买入」误判成收入的代价远大于漏记一笔。
      *
      * 这类通知的方向改由**方向词**兜住，见 [EXPENSE_WORDS] / [INCOME_WORDS] 里的
-     * 买入 / 申购 / 定投 / 赎回 / 卖出 / 分红。该取舍由 `NotificationPaymentParserTest`
-     * 的 `incomeWordListCoversIncomeRules` 与 `ambiguousInvestmentKeywordsDoNotVoteIncome`
-     * 两个用例同时锁住。
+     * 买入 / 申购 / 定投 / 赎回 / 卖出 / 分红。因此这里的三个词**只用于分类、不参与方向投票**，
+     * 改动时不要误把它们加进 [INCOME_WORDS]。
      */
     val AMBIGUOUS_INVESTMENT_KEYWORDS = listOf("理财", "基金", "股票")
 

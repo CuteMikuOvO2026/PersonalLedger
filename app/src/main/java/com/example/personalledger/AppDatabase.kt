@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * **升级约定（重要）**：任何改动实体（字段、索引、表）的提交，都必须
  * 1. 把 [Database.version] 加一；
  * 2. 在 [MIGRATIONS] 里补一条 `Migration(旧版本, 新版本)`，写清楚从旧结构到新结构的 SQL；
- * 3. 构建后把 KSP 生成的 `app/schemas/<版本>.json` 一并提交，供迁移测试与代码评审比对。
+ * 3. 构建后把 KSP 生成的 `app/schemas/<版本>.json` 一并提交，供代码评审比对结构变化。
  *
  * 缺少迁移会导致老用户升级后启动即崩（`IllegalStateException: A migration from X to Y was
  * required but not found`），因此迁移与实体改动必须成对出现。

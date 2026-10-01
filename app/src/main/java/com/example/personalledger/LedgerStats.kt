@@ -53,7 +53,7 @@ enum class PieTimeRange(val days: Int?) {
 
 /**
  * 账本统计/报表的纯计算逻辑（不依赖 Android 组件），
- * 供 [MainViewModel] 与 [ReportViewModel] 复用，并便于 JVM 单元测试。
+ * 供 [MainViewModel] 与 [ReportViewModel] 复用。
  *
  * 这里有两类函数，职责必须分清：
  * - **时间窗口计算**（[currentStatsRanges]、[weeklyDayRanges]、[rangeStartMillisOrNull] 等）：
@@ -61,8 +61,8 @@ enum class PieTimeRange(val days: Int?) {
  * - **聚合结果换算**（[buildHomeStats]、[buildPieEntries]、[buildWeeklyBarEntries]、
  *   [buildReportSummary]）：把数据库聚合出的「分」金额换算成界面数据。
  *
- * 另有若干 `getXxx(list)` 形式的**内存版实现**：它们只做逐条累加，用于和数据库聚合结果
- * 对拍（见 `LedgerStatsTest`），保证两条路径永远得出同样的数字；生产代码走数据库聚合。
+ * 设计上**只保留数据库聚合这一条路径**：统计与报表都先把聚合下推到 Room，再由这里换算成
+ * 界面数据，因此不存在「内存版 / 数据库版」两套算法各自漂移的问题。
  */
 object LedgerStats {
 
@@ -132,41 +132,12 @@ object LedgerStats {
         return PeriodRange(start, cal.timeInMillis - 1)
     }
 
-    fun computeHomeStats(list: List<LedgerItem>, budgetValue: Double): HomeStats {
-        val today = todayRange()
-        val month = monthRange()
-
-        var todayIncomeCents = 0L
-        var todayExpenseCents = 0L
-        var monthIncomeCents = 0L
-        var monthExpenseCents = 0L
-
-        list.forEach { item ->
-            if (item.timeMillis in today.startMillis..today.endMillis) {
-                if (item.isExpense) todayExpenseCents += item.amountCents
-                else todayIncomeCents += item.amountCents
-            }
-            if (item.timeMillis in month.startMillis..month.endMillis) {
-                if (item.isExpense) monthExpenseCents += item.amountCents
-                else monthIncomeCents += item.amountCents
-            }
-        }
-
-        return buildHomeStats(
-            todayIncomeCents = todayIncomeCents,
-            todayExpenseCents = todayExpenseCents,
-            monthIncomeCents = monthIncomeCents,
-            monthExpenseCents = monthExpenseCents,
-            budgetValue = budgetValue
-        )
-    }
-
     /**
      * 把两个收支方向的聚合结果组装成首页概览所需的 [HomeTotals]。
      *
      * 数据库对收入、支出各查一次（[LedgerEntryDao.observeDirectionTotals]），
      * 这里负责**方向到字段的映射**——收入进 `Income` 字段、支出进 `Expense` 字段。
-     * 这层映射写反了界面数字会「收支颠倒」且不报错，因此单独抽成纯函数并由单测锁定。
+     * 这层映射写反了界面数字会「收支颠倒」且不报错，因此单独抽成纯函数集中一处，避免散落。
      */
     fun buildHomeTotals(income: DirectionTotals, expense: DirectionTotals): HomeTotals =
         HomeTotals(
@@ -227,7 +198,7 @@ object LedgerStats {
         return Pair(entries, ranges.map { it.label })
     }
 
-    /** 数据库聚合的全表收支与条数 → 报表摘要文本（格式与 [getReportSummary] 保持一致）。 */
+    /** 数据库聚合的全表收支与条数 → 报表摘要文本。 */
     fun buildReportSummary(
         totals: ReportTotals,
         budgetValue: Double,
@@ -250,44 +221,6 @@ object LedgerStats {
             appendLine("记录总数: ${totals.entryCount}")
         }
     }
-
-    fun getExpenseCategoryPieEntries(list: List<LedgerItem>): List<PieEntry> {
-        val categoryTotals = mutableMapOf<String, Long>()
-        list.forEach { item ->
-            if (item.isExpense) {
-                val current = categoryTotals[item.categoryName] ?: 0L
-                categoryTotals[item.categoryName] = current + item.amountCents
-            }
-        }
-        return categoryTotals.map { (name, cents) -> PieEntry((cents / 100.0).toFloat(), name) }
-    }
-
-    /**
-     * 按 [range] 过滤出参与饼图统计的支出记录（内存版，供对拍与测试使用）。
-     *
-     * - [PieTimeRange.ALL]：不做时间过滤，返回全部支出记录。
-     * - 其余选项：取「包含今天在内的最近 `range.days` 天」，区间与首页统计一样按本地时区对齐到整日边界。
-     */
-    fun filterExpenseByRange(
-        list: List<LedgerItem>,
-        range: PieTimeRange,
-        nowMillis: Long = System.currentTimeMillis()
-    ): List<LedgerItem> {
-        val expenses = list.filter { it.isExpense }
-        val startMillis = rangeStartMillisOrNull(range, startOfDay(nowMillis)) ?: return expenses
-        return expenses.filter { it.timeMillis >= startMillis }
-    }
-
-    /**
-     * 饼图数据：[range] 指定时间范围，仅统计该范围内的支出分类占比。
-     *
-     * 默认 [PieTimeRange.ALL] 时与改造前行为完全一致（全部时间数据）。
-     */
-    fun getExpenseCategoryPieEntries(
-        list: List<LedgerItem>,
-        range: PieTimeRange,
-        nowMillis: Long = System.currentTimeMillis()
-    ): List<PieEntry> = getExpenseCategoryPieEntries(filterExpenseByRange(list, range, nowMillis))
 
     /**
      * [nowMillis] 所在自然日的零点（本地时区）。
@@ -322,7 +255,7 @@ object LedgerStats {
      * 饼图时间范围对应的起始毫秒；[PieTimeRange.ALL] 返回 null 表示不限时间。
      *
      * 返回 null 会让 Room 走 `:startMillis IS NULL` 的「不过滤」分支，
-     * 与内存版 [filterExpenseByRange] 的语义严格一致。
+     * 即 [PieTimeRange.ALL] 表示统计全部时间的支出。
      */
     fun rangeStartMillisOrNull(range: PieTimeRange, todayStart: Long): Long? {
         val days = range.days ?: return null
@@ -352,49 +285,6 @@ object LedgerStats {
                 endMillis = calendar.timeInMillis
             )
         }
-    }
-
-    /**
-     * 最近 [WEEKLY_DAYS] 天每日支出的柱状图数据（内存版，供对拍与测试使用）。
-     *
-     * 分桶口径与数据库版 [buildWeeklyBarEntries] 严格一致：左闭右开、按本地时区对齐整日边界，
-     * 因此同一批数据走哪条路径都必须得出相同的柱子高度。
-     */
-    fun getWeeklyExpenseBarEntries(
-        list: List<LedgerItem>,
-        nowMillis: Long = System.currentTimeMillis()
-    ): Pair<List<BarEntry>, List<String>> {
-        val ranges = weeklyDayRanges(nowMillis)
-        val expenses = list.filter { it.isExpense }
-        val entries = ranges.mapIndexed { index, dayRange ->
-            val dayTotalCents = expenses
-                .filter { it.timeMillis >= dayRange.startMillis && it.timeMillis < dayRange.endMillis }
-                .sumOf { it.amountCents }
-            BarEntry(index.toFloat(), (dayTotalCents / 100.0).toFloat())
-        }
-        return Pair(entries, ranges.map { it.label })
-    }
-
-    /**
-     * 报表摘要文本（内存版，供对拍与测试使用）。
-     *
-     * 直接复用 [buildReportSummary]，保证内存版与数据库版的文案格式不会各自漂移。
-     */
-    fun getReportSummary(list: List<LedgerItem>, budgetValue: Double): String {
-        var totalIncomeCents = 0L
-        var totalExpenseCents = 0L
-        list.forEach { item ->
-            if (item.isExpense) totalExpenseCents += item.amountCents
-            else totalIncomeCents += item.amountCents
-        }
-        return buildReportSummary(
-            totals = ReportTotals(
-                incomeCents = totalIncomeCents,
-                expenseCents = totalExpenseCents,
-                entryCount = list.size
-            ),
-            budgetValue = budgetValue
-        )
     }
 
     fun formatAmount(cents: Long): String =

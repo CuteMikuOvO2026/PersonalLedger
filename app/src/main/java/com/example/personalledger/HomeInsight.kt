@@ -32,7 +32,7 @@ data class HomeInsight(
  * 首页洞察的纯计算逻辑。
  *
  * 输入就是数据库已经聚合好的「本月 / 上月 按分类支出」，
- * 因此这里只做选择与换算，不碰数据库、不依赖 Android，便于单元测试。
+ * 因此这里只做选择与换算，不碰数据库、不依赖 Android。
  */
 object HomeInsights {
 
