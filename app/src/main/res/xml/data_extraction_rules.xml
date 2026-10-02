@@ -4,16 +4,13 @@
    for details.
 -->
 <data-extraction-rules>
+    <!-- 两节都只写 <exclude>：其余数据照常备份 / 迁移，唯独 API Key 不出设备。
+         cloud-backup 与 device-transfer 必须各写一遍——只写一节时另一条路径的行为
+         取决于系统版本的默认语义，靠不住。 -->
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="sharedpref" path="ai_prefs.xml" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="sharedpref" path="ai_prefs.xml" />
     </device-transfer>
-    -->
 </data-extraction-rules>

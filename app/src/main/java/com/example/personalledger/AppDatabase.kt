@@ -19,8 +19,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * required but not found`），因此迁移与实体改动必须成对出现。
  */
 @Database(
-    entities = [LedgerEntryEntity::class, BudgetEntity::class],
-    version = 3,
+    entities = [LedgerEntryEntity::class, BudgetEntity::class, ChatMessageEntity::class],
+    version = 4,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,6 +28,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun ledgerEntryDao(): LedgerEntryDao
 
     abstract fun budgetDao(): BudgetDao
+
+    abstract fun chatMessageDao(): ChatMessageDao
 
     companion object {
         private const val DB_NAME = "personalledger.db"
@@ -82,8 +84,37 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 → v4：新增 `chat_messages` 表，存放 AI 助手的对话记录与**待确认账目草稿**。
+         *
+         * 只建表、不动既有表；`ledger_entries` 与 `budgets` 的数据完全不受影响。
+         *
+         * 建表 SQL 的写法有两个必须踩准的点（都不是手写能靠感觉蒙对的）：
+         * 1. `@PrimaryKey(autoGenerate = true)` 的 Long 主键，Room 生成的是
+         *    `` `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL ``，
+         *    **没有**独立的 `PRIMARY KEY(...)` 尾子句 —— 与 `ledger_entries` 那种
+         *    TEXT 主键的写法不同；
+         * 2. 可空列 `draftJson` 生成的是 `` `draftJson` TEXT ``，**不带** `NOT NULL`。
+         *
+         * 因此这里的 SQL 是从构建产出的 `app/schemas/.../4.json` 里逐字抄下来的
+         * （只把 `${TABLE_NAME}` 换成表名）。任何一处不一致，Room 的 schema 校验都会在
+         * 老用户升级后的首次启动直接抛异常。
+         */
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `chat_messages` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`role` TEXT NOT NULL, " +
+                        "`content` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "`draftJson` TEXT)"
+                )
+            }
+        }
+
         /** 全部迁移，按版本顺序传入 [Room.databaseBuilder]。 */
-        private val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        private val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         @Volatile
         private var INSTANCE: AppDatabase? = null

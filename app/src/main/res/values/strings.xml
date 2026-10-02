@@ -191,4 +191,39 @@
     <string name="auto_bookkeeping_switch">自动记录微信 / 支付宝账单</string>
     <string name="auto_bookkeeping_enabled_toast">自动记账已开启</string>
     <string name="auto_bookkeeping_disabled_toast">自动记账已关闭</string>
+
+    <!-- AI 助手 -->
+    <string name="nav_assistant">助手</string>
+    <string name="ai_settings">AI 设置</string>
+    <string name="ai_settings_desc">用一句话记账。例如说「我今天买了咖啡 花了15」，助手会解析出金额、分类、备注与时间，你确认后再写入账本。</string>
+    <string name="ai_settings_privacy">开启后，你发送的消息、最近几轮对话与分类名称会通过网络发送到 DeepSeek 用于解析；账本记录本身不会上传。API Key 只保存在本机，并且已排除在云备份与换机迁移之外。</string>
+    <string name="ai_api_key">API Key</string>
+    <string name="ai_api_key_hint">粘贴 DeepSeek API Key</string>
+    <string name="ai_api_key_empty">请先填入 API Key</string>
+    <string name="ai_get_api_key">获取 API Key</string>
+    <string name="ai_model">模型</string>
+    <string name="ai_not_configured">请先在右上角「AI 设置」里填入 DeepSeek API Key</string>
+    <string name="ai_input_hint">描述这笔消费，例如「今天咖啡 15」</string>
+    <string name="ai_input_locked_hint">请先在右上角填入 API Key</string>
+    <string name="ai_send">发送</string>
+    <string name="ai_empty_title">用一句话记账</string>
+    <string name="ai_empty_hint">例如：「我今天买了咖啡 花了15」</string>
+    <string name="ai_reply_empty">已收到</string>
+    <string name="ai_draft_title">待确认的账目</string>
+    <string name="ai_confirm">确认记账</string>
+    <string name="ai_discard">忽略</string>
+    <string name="ai_confirmed">已记账：%1$s</string>
+    <string name="ai_discarded">已忽略这笔记录</string>
+    <string name="ai_already_confirmed">这笔已经处理过了</string>
+    <string name="ai_clear_chat">清空对话</string>
+    <string name="ai_clear_chat_message">确定要清空所有对话记录吗？已记入账本的记录不会受影响。</string>
+    <string name="ai_clear_chat_done">对话已清空</string>
+    <string name="ai_error_unauthorized">API Key 无效或已失效，请在「AI 设置」里检查</string>
+    <string name="ai_error_balance">DeepSeek 账户余额不足，请先充值</string>
+    <string name="ai_error_rate_limit">请求过于频繁，请稍后再试</string>
+    <string name="ai_error_bad_request">请求被拒绝（模型或参数不受支持）</string>
+    <string name="ai_error_server">DeepSeek 服务暂时不可用，请稍后再试</string>
+    <string name="ai_error_network">网络不可用，请检查网络连接</string>
+    <string name="ai_error_truncated">这句话太长了，回复被截断。请拆成几句分别发送</string>
+    <string name="ai_error_parse">没能理解这句话，请换个说法（例如「昨天打车 23」）</string>
 </resources>

@@ -6,8 +6,7 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- 只给 <exclude>，其余数据照常备份。
+         ai_prefs.xml 存的是 DeepSeek API Key，属于凭据，绝不能进云备份。 -->
+    <exclude domain="sharedpref" path="ai_prefs.xml" />
 </full-backup-content>

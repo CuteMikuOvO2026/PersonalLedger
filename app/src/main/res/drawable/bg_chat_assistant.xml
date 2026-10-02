@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  助手气泡：低调的浅底容器色，与卡片底色区分但保持同一套清新基调。
+  左下角收一个小圆角，与用户气泡镜像。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurfaceContainerHigh" />
+    <corners
+        android:bottomLeftRadius="4dp"
+        android:bottomRightRadius="16dp"
+        android:topLeftRadius="16dp"
+        android:topRightRadius="16dp" />
+</shape>

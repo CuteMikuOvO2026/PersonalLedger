@@ -5,6 +5,10 @@
     <!-- 预算预警通知。Android 13（API 33）起属于运行时权限，需在界面中申请。 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- AI 助手：调用 DeepSeek 解析自然语言记账。这是本应用唯一的联网用途，
+         未配置 API Key 时助手页不会发出任何请求。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:name=".App"
         android:allowBackup="true"

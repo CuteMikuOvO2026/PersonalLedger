@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  单条对话消息。
+
+  刻意只用**一个**布局 + 一个 viewType（两套气泡容器互斥显示），而不是给用户 / 助手各写一个
+  item 布局：那样就要两套 ViewBinding、一个 sealed class 与两套绑定分支，而这里两者的差异
+  仅仅是「靠哪边、什么底色、文字什么颜色」。代价是每行多几个无用 View，对话量级下无感。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="4dp">
+
+    <!-- 用户气泡：靠右 -->
+    <TextView
+        android:id="@+id/text_user"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:background="@drawable/bg_chat_user"
+        android:maxWidth="300dp"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="9dp"
+        android:textColor="@color/white"
+        android:textSize="15sp"
+        tools:text="我今天买了咖啡 花了15" />
+
+    <LinearLayout
+        android:id="@+id/layout_assistant"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- 助手气泡：靠左 -->
+        <TextView
+            android:id="@+id/text_assistant"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start"
+            android:background="@drawable/bg_chat_assistant"
+            android:maxWidth="300dp"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="9dp"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="15sp"
+            tools:text="已解析出 1 笔支出" />
+
+        <!-- 待确认的账目卡片：只有当这条消息带草稿时才显示 -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/card_draft"
+            style="@style/Widget.Material3.CardView.Elevated"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            app:cardBackgroundColor="?attr/colorSurfaceContainer"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="0dp"
+            app:strokeColor="?attr/colorOutlineVariant"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ai_draft_title"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="12sp" />
+
+                <!-- 每笔账目一行，由 ChatAdapter 程序化填充（不嵌套 RecyclerView） -->
+                <LinearLayout
+                    android:id="@+id/layout_draft_entries"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="vertical" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="end"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/button_discard"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/ai_discard" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/button_confirm"
+                        style="@style/Widget.Material3.Button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="@string/ai_confirm" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+    </LinearLayout>
+
+</LinearLayout>

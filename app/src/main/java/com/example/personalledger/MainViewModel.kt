@@ -113,22 +113,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val monthlyOverallBudgetCents: Flow<Long> =
         repository.budgets.map { BudgetStats.overallLimitCents(it, BudgetPeriod.MONTH) }
 
-    private val defaultExpenseCategories = listOf(
-        CategoryItem("餐饮", R.drawable.ic_food, "expense"),
-        CategoryItem("交通", R.drawable.ic_transport, "expense"),
-        CategoryItem("购物", R.drawable.ic_shopping, "expense"),
-        CategoryItem("娱乐", R.drawable.ic_entertainment, "expense"),
-        CategoryItem("医疗", R.drawable.ic_medical, "expense"),
-        CategoryItem("教育", R.drawable.ic_education, "expense"),
-        CategoryItem("住房", R.drawable.ic_housing, "expense")
-    )
+    // 内置分类清单已抽到 DefaultCategories：AI 助手需要拿同一份清单去约束模型输出，
+    // 两边各留一份迟早会漂移（见该对象的说明）。
+    private val defaultExpenseCategories = DefaultCategories.expense
 
-    private val defaultIncomeCategories = listOf(
-        CategoryItem("工资", R.drawable.ic_salary, "income"),
-        CategoryItem("奖金", R.drawable.ic_bonus, "income"),
-        CategoryItem("投资", R.drawable.ic_investment, "income"),
-        CategoryItem("兼职", R.drawable.ic_side_job, "income")
-    )
+    private val defaultIncomeCategories = DefaultCategories.income
 
     val expenseCategories: LiveData<List<CategoryItem>> =
         repository.customCategories.asLiveData().map { custom ->

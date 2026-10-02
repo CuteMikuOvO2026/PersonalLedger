@@ -2,8 +2,10 @@ package com.example.personalledger
 
 import android.content.Context
 import android.util.Log
+import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,17 +20,21 @@ import kotlin.math.roundToLong
 /**
  * 数据仓库：账本条目与预算规则走 Room，自定义分类 / 自动记账开关 / 主题模式走 DataStore。
  * 负责实体映射、旧存储的一次性搬迁（DataStore JSON 历史 → Room；旧月度总预算 → budgets 表）、
- * 以及备份还原。
+ * 备份还原，以及 AI 助手的对话与待确认草稿。
  */
 class LedgerRepository(context: Context) {
 
     private val db = AppDatabase.get(context)
     private val dao = db.ledgerEntryDao()
     private val budgetDao = db.budgetDao()
+    private val chatDao = db.chatMessageDao()
     private val dataStoreManager = DataStoreManager(context)
     private val gson: Gson = GsonBuilder()
         .registerTypeAdapter(LedgerItem::class.java, LedgerItemJsonAdapter())
         .create()
+
+    /** 待确认草稿（[ParsedEntry] 列表）的 Gson 类型，供 [ChatMessageEntity.draftJson] 往返。 */
+    private val draftType = object : TypeToken<List<ParsedEntry>>() {}.type
 
     private val migrateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -48,6 +54,15 @@ class LedgerRepository(context: Context) {
     val customCategories: Flow<List<CategoryItem>> = dataStoreManager.customCategoriesFlow
 
     val autoBookkeepingEnabled: Flow<Boolean> = dataStoreManager.autoBookkeepingFlow
+
+    /**
+     * AI 助手的全部对话消息，按时间顺序。
+     *
+     * 与账目不同，这里**整体读取**而不是分页：对话是一段连续的时间线，界面永远从头读到尾，
+     * 量级也只有几百条（见 [ChatMessageDao] 的说明）。
+     */
+    val chatMessages: Flow<List<ChatMessage>> =
+        chatDao.observeAll().map { list -> list.map { it.toChatMessage() } }
 
     // 主题模式不经过这里：它由 ThemeSettings 单独持久化（同步读写），避免出现两份不一致的值。
 
@@ -271,9 +286,81 @@ class LedgerRepository(context: Context) {
         dao.getExpenseEntriesByCategory(categoryName, startMillis)
             .map { LedgerItemMappers.entityToItem(it) }
 
+    // ---------- AI 助手对话 ----------
+
+    /** 追加一条对话消息；[draft] 非空表示这条助手消息带一张待确认的账目卡片。 */
+    suspend fun appendChatMessage(
+        role: ChatRole,
+        content: String,
+        draft: List<ParsedEntry>? = null
+    ): Long = chatDao.insert(
+        ChatMessageEntity(
+            role = role.value,
+            content = content,
+            createdAt = System.currentTimeMillis(),
+            draftJson = encodeDraft(draft)
+        )
+    )
+
+    /**
+     * 确认待确认的账目：**占用草稿与写入账目必须在同一个事务里**。
+     *
+     * 顺序不能反：先写入再占位的话，两次并发点击会各自写入一遍，账本里就多出一笔。
+     * 反过来先占位（`consumeDraft` 带 `draftJson IS NOT NULL` 条件）则天然是原子的——
+     * 只有拿到 1 行受影响的那一次调用才会往下写账目，另一次直接返回 `false`。
+     *
+     * @return `false` 表示这笔已经被处理过（或消息不存在），调用方据此提示而不是静默成功。
+     */
+    suspend fun confirmDraft(
+        messageId: Long,
+        items: List<LedgerItem>,
+        confirmedText: String
+    ): Boolean = db.withTransaction {
+        if (chatDao.consumeDraft(messageId, confirmedText) == 0) return@withTransaction false
+        if (items.isNotEmpty()) {
+            dao.upsertAll(items.map { LedgerItemMappers.itemToEntity(it) })
+        }
+        true
+    }
+
+    /** 忽略一张待确认卡片。与 [confirmDraft] 一样靠 [ChatMessageDao.consumeDraft] 的原子占位去重。 */
+    suspend fun discardDraft(messageId: Long, discardedText: String): Boolean =
+        chatDao.consumeDraft(messageId, discardedText) > 0
+
+    suspend fun clearChat() = chatDao.deleteAll()
+
+    private fun ChatMessageEntity.toChatMessage(): ChatMessage = ChatMessage(
+        id = id,
+        role = ChatRole.from(role),
+        content = content,
+        createdAt = createdAt,
+        draft = decodeDraft(draftJson)
+    )
+
+    /**
+     * 草稿解码失败时返回 `null`（退化成一条普通文本消息）而不是抛异常。
+     *
+     * 这与 [DataStoreManager.customCategoriesFlow] 的取舍一致：一段坏掉的 JSON 不该让整个
+     * 助手页面打不开，最坏的结果应该是「确认卡片没了，但那条回复还在」。
+     */
+    private fun decodeDraft(json: String?): List<ParsedEntry>? {
+        if (json.isNullOrEmpty()) return null
+        return try {
+            gson.fromJson<List<ParsedEntry>>(json, draftType)?.takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            Log.e("LedgerRepository", "草稿解析失败，按普通消息处理", e)
+            null
+        }
+    }
+
+    private fun encodeDraft(draft: List<ParsedEntry>?): String? =
+        if (draft.isNullOrEmpty()) null else gson.toJson(draft, draftType)
+
     suspend fun resetAll() {
         dao.deleteAll()
         budgetDao.deleteAll()
+        // 对话也要清掉：否则「恢复初始状态」后会留下一堆指向已删账目的助手回复
+        chatDao.deleteAll()
         dataStoreManager.clearAllData()
     }
 

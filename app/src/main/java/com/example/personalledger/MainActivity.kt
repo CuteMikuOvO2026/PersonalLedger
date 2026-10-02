@@ -70,6 +70,11 @@ class MainActivity : AppCompatActivity() {
                     true
                 }
 
+                R.id.navigation_assistant -> {
+                    switchTo(AssistantFragment())
+                    true
+                }
+
                 else -> false
             }
         }
