@@ -14,6 +14,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -50,6 +51,17 @@ class AssistantFragment : Fragment() {
         onDiscard = { viewModel.discardDraft(it) }
     )
 
+    /** 评估进行中的进度弹窗；null 表示当前没有在评估。 */
+    private var evalProgressDialog: AlertDialog? = null
+
+    /**
+     * 用户是否已主动关掉本轮进度弹窗。
+     *
+     * 关掉之后不再重新弹出：评估还会继续跑完（结果照常显示），但反复弹回来会让人以为按钮坏了。
+     * 新一轮评估开始时复位。
+     */
+    private var evalProgressSuppressed = false
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -83,6 +95,11 @@ class AssistantFragment : Fragment() {
 
                     R.id.action_clear_chat -> {
                         showClearChatDialog()
+                        true
+                    }
+
+                    R.id.action_run_eval -> {
+                        showEvalConfirmDialog()
                         true
                     }
 
@@ -145,6 +162,140 @@ class AssistantFragment : Fragment() {
             // 立刻复位：否则旋转屏幕 / 切页回来后同一条提示会再弹一次
             viewModel.clearHint()
         }
+
+        observeEval()
+    }
+
+    // ---------- 解析自测 ----------
+
+    /**
+     * 评估进度与结果的弹窗。
+     *
+     * 进度用对话式弹出：评估要跑一两分钟，期间没有任何反馈会让人以为卡死了；
+     * 而 22 次请求不适合塞进聊天区（那会把用户的真实对话冲掉）。
+     *
+     * ⚠️ 这里有个必须记住的时序陷阱：**进度与结果是两个独立的 LiveData**，它们的到达顺序
+     * 并不保证。曾经的写法是「收到 report 就显示结果、收到 null 就关进度」，而进度是用
+     * `postValue` 发的 —— 结果弹窗已经弹出、进度也被置空之后，那个**迟到的** `22/22`
+     * 才被主线程执行，于是又新建出一个进度弹窗，和结果弹窗叠在一起。
+     *
+     * 所以现在的规矩是：**进度观察者只在 `evalRunning` 为真时才允许创建弹窗**，
+     * 用一个显式状态闸门把迟到的旧值挡在外面，而不是靠两个流的先后顺序。
+     */
+    private fun observeEval() {
+        viewModel.evalRunning.observe(viewLifecycleOwner) { running ->
+            if (running) {
+                // 新一轮开始：清掉上一轮「用户主动关掉进度」的抑制标记
+                evalProgressSuppressed = false
+            } else {
+                dismissEvalProgress()
+            }
+        }
+
+        viewModel.evalProgress.observe(viewLifecycleOwner) { progress ->
+            // 闸门一：评估已结束（或从未开始）时，任何迟到的进度值都不该再弹出窗口
+            if (progress == null || viewModel.evalRunning.value != true) {
+                dismissEvalProgress()
+                return@observe
+            }
+            // 闸门二：用户已经主动关掉进度弹窗，就不要再弹回来骚扰他。
+            // 评估仍在后台跑完，结果弹窗照常出现。
+            if (evalProgressSuppressed) return@observe
+
+            val (done, total) = progress
+            val message = getString(R.string.ai_eval_running, done, total)
+            val dialog = evalProgressDialog
+            if (dialog == null) {
+                // 可以取消：取消只关掉这个弹窗，后台那次评估仍会跑完并把结果写进日志。
+                // 绝不能设成不可取消 —— 一旦状态出错，用户就再也退不出这个界面了。
+                evalProgressDialog = AlertDialog.Builder(requireContext())
+                    .setTitle(R.string.ai_run_eval)
+                    .setMessage(message)
+                    .setCancelable(true)
+                    .setOnCancelListener {
+                        evalProgressDialog = null
+                        evalProgressSuppressed = true
+                    }
+                    .show()
+            } else {
+                dialog.setMessage(message)
+            }
+        }
+
+        viewModel.evalReport.observe(viewLifecycleOwner) { report ->
+            if (report == null) return@observe
+            // 先关进度再显示结果：结果弹窗是终点，不能让进度弹窗压在它上面
+            dismissEvalProgress()
+            showEvalReportDialog(report)
+            viewModel.clearEvalReport()
+        }
+    }
+
+    private fun dismissEvalProgress() {
+        evalProgressDialog?.dismiss()
+        evalProgressDialog = null
+    }
+
+    private fun showEvalConfirmDialog() {
+        if (!AiSettings.isConfigured(requireContext())) {
+            Toast.makeText(requireContext(), R.string.ai_not_configured, Toast.LENGTH_SHORT).show()
+            showAiSettingsDialog()
+            return
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.ai_run_eval)
+            .setMessage(getString(R.string.ai_eval_confirm_message, AiEvalSet.cases.size))
+            .setPositiveButton(R.string.confirm) { _, _ -> viewModel.runEval() }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showEvalReportDialog(report: AiEvalReport) {
+        // 先关掉进度弹窗：两个 LiveData 的到达顺序不保证，显式收敛掉更稳
+        evalProgressDialog?.dismiss()
+        evalProgressDialog = null
+
+        val context = requireContext()
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+
+        val body = buildString {
+            append(report.summaryLines().joinToString("\n"))
+
+            val failed = report.results.filter { it.failure != null }
+            if (failed.isNotEmpty()) {
+                append("\n\n失败用例：")
+                failed.forEach { append("\n· ${it.case.input}（${it.failure}）") }
+            }
+
+            // 只列未全对的：全对的 20 条列出来没有任何信息量
+            val wrong = report.results.filter { it.failure == null && !it.fullyCorrect }
+            if (wrong.isNotEmpty()) {
+                append("\n\n未全对用例：")
+                wrong.forEach { append("\n· ${it.case.input}\n  实际 → ${it.actualSummary}") }
+            }
+        }
+
+        val textView = TextView(context).apply {
+            text = body
+            textSize = 13f
+            setTextColor(
+                ThemeColors.of(
+                    context,
+                    com.google.android.material.R.attr.colorOnSurface,
+                    R.color.text_primary
+                )
+            )
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+        }
+
+        AlertDialog.Builder(context)
+            .setTitle(R.string.ai_eval_done_title)
+            .setView(ScrollView(context).apply { addView(textView) })
+            .setPositiveButton(R.string.close) { _, _ ->
+                Toast.makeText(context, R.string.ai_eval_logged, Toast.LENGTH_LONG).show()
+            }
+            .show()
     }
 
     /**
@@ -152,10 +303,14 @@ class AssistantFragment : Fragment() {
      *
      * 这一步不能省：没有它，未配置的人打开助手页只会看到一句用法示例，**完全看不出要去右上角
      * 配置**，必须先打一句话、点发送，才会被 Toast 告知。空状态是唯一能事先讲清楚的地方。
+     *
+     * 形参名是 [isEmpty] 而不是 hasMessages：两处调用传进来的都是「是否为空」
+     * （`messages.isEmpty()` / `itemCount == 0`）。先前这里按 `hasMessages` 语义写，
+     * 判断被整体写反 —— 结果是**有消息时反而显示空状态**，空状态压在同一条消息的确认卡片上。
      */
-    private fun renderEmptyState(hasMessages: Boolean) {
-        binding.layoutEmpty.isVisible = !hasMessages
-        if (hasMessages) return
+    private fun renderEmptyState(isEmpty: Boolean) {
+        binding.layoutEmpty.isVisible = isEmpty
+        if (!isEmpty) return
 
         val configured = AiSettings.isConfigured(requireContext())
         binding.textEmptyHint.setText(
@@ -365,6 +520,10 @@ class AssistantFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        // 必须显式收掉：这两个弹窗是用 Activity context 建的，挂在 Activity 的窗口上，
+        // **不随 Fragment 视图销毁而消失**。不关的话切到别的 Tab 后弹窗会留在屏幕上，
+        // 而它引用的 binding 已经没了。
+        dismissEvalProgress()
         binding.recyclerChat.adapter = null
         _binding = null
     }

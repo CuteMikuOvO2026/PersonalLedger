@@ -10,4 +10,8 @@
         android:id="@+id/action_clear_chat"
         android:title="@string/ai_clear_chat"
         app:showAsAction="never" />
+    <item
+        android:id="@+id/action_run_eval"
+        android:title="@string/ai_run_eval"
+        app:showAsAction="never" />
 </menu>

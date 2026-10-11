@@ -13,9 +13,31 @@ import java.net.URL
 /** 一轮对话。[role] 取 `system` / `user` / `assistant`。 */
 data class AiChatTurn(val role: String, val content: String)
 
+/**
+ * 一次请求的用量与耗时。
+ *
+ * 为什么要采这两个数：**改提示词、换模型、开关思考模式，都会同时影响准确率、延迟和花费**，
+ * 只盯着准确率会在某天收到账单时才发现问题。有了它，「这次改动是变快还是变慢、变便宜还是变贵」
+ * 才有事实依据，而不是凭感觉。
+ */
+data class AiUsage(
+    val promptTokens: Int,
+    val completionTokens: Int,
+    val totalTokens: Int,
+    /**
+     * 命中上下文缓存（KV Cache）的输入 token 数。
+     *
+     * 单独采它是因为**计价完全不同**：命中部分按未命中的 1/50 计价。系统提示词每次请求都一样，
+     * 因此这部分命中率通常很高 —— 不理解这一点会严重高估成本。
+     */
+    val cachedTokens: Int,
+    /** 从发起到读完全部响应的墙钟耗时。 */
+    val elapsedMillis: Long
+)
+
 /** 一次请求的结果。 */
 sealed interface AiCompletionResult {
-    data class Success(val content: String) : AiCompletionResult
+    data class Success(val content: String, val usage: AiUsage?) : AiCompletionResult
 
     data class Failure(val error: AiError) : AiCompletionResult
 }
@@ -110,7 +132,10 @@ object DeepSeekClient {
 
     private data class Thinking(val type: String)
 
-    private data class ChatResponse(val choices: List<Choice>?)
+    private data class ChatResponse(
+        val choices: List<Choice>?,
+        val usage: UsageDto?
+    )
 
     private data class Choice(
         val message: ResponseMessage?,
@@ -119,6 +144,21 @@ object DeepSeekClient {
 
     /** 响应里的 content 是可空的（被内容过滤或截断时会是 null）。 */
     private data class ResponseMessage(val content: String?)
+
+    /**
+     * 用量对象。**每个字段都可空**：这是网络来的数据，缺字段必须是 null 而不是让 Gson 塞进
+     * 一个「非空但为 null」的假象（Gson 绕过 Kotlin 构造器，不会执行非空校验）。
+     */
+    private data class UsageDto(
+        @SerializedName("prompt_tokens") val promptTokens: Int?,
+        @SerializedName("completion_tokens") val completionTokens: Int?,
+        @SerializedName("total_tokens") val totalTokens: Int?,
+        @SerializedName("prompt_tokens_details") val promptTokensDetails: PromptTokensDetailsDto?
+    )
+
+    private data class PromptTokensDetailsDto(
+        @SerializedName("prompt_cache_hit_tokens") val promptCacheHitTokens: Int?
+    )
 
     /**
      * 发起一次对话补全。
@@ -149,6 +189,7 @@ object DeepSeekClient {
 
         val body = gson.toJson(request)
         var connection: HttpURLConnection? = null
+        val startedAt = System.currentTimeMillis()
         try {
             connection = (URL(AiSettings.BASE_URL).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -177,7 +218,30 @@ object DeepSeekClient {
                 return@withContext AiCompletionResult.Failure(mapHttpError(code))
             }
 
-            parseSuccess(text)
+            val result = parseSuccess(text, System.currentTimeMillis() - startedAt)
+            when (result) {
+                is AiCompletionResult.Success -> result.usage?.let {
+                    // 成功路径统一在这里打一行用量，所有调用方（包括评估器）都不必自己记。
+                    Log.i(
+                        TAG,
+                        "解析成功 ${it.elapsedMillis}ms · ${it.totalTokens} tokens" +
+                            "（输入 ${it.promptTokens}，其中缓存命中 ${it.cachedTokens}；输出 ${it.completionTokens}）"
+                    )
+                }
+
+                is AiCompletionResult.Failure -> {
+                    // ⚠️ 把 200 响应体**原样**打出来。
+                    //
+                    // 没有这一行，「没听懂」这个提示背后有三种完全不同的原因无法区分：
+                    // ① 模型返回了合法 JSON 但字段不合规（被解析器逐笔丢弃）
+                    // ② 模型返回了非法 JSON / 包了代码块围栏 / entries 类型不对
+                    // ③ content 为空或只有空白
+                    // 三者的修法完全不同，而用户在界面上看到的都是同一句话。
+                    // 这是错误路径，日志长一点无所谓。
+                    Log.e(TAG, "响应无法使用（${result.error}）。原始响应：${text.take(1200)}")
+                }
+            }
+            result
         } catch (e: IOException) {
             Log.e(TAG, "DeepSeek 请求失败（网络）", e)
             AiCompletionResult.Failure(AiError.NETWORK)
@@ -190,8 +254,8 @@ object DeepSeekClient {
         }
     }
 
-    /** 解析 200 的响应体，取出 `choices[0].message.content`。 */
-    private fun parseSuccess(text: String): AiCompletionResult {
+    /** 解析 200 的响应体，取出 `choices[0].message.content` 与用量。 */
+    private fun parseSuccess(text: String, elapsedMillis: Long): AiCompletionResult {
         val response = try {
             gson.fromJson(text, ChatResponse::class.java)
         } catch (_: JsonSyntaxException) {
@@ -211,7 +275,25 @@ object DeepSeekClient {
         if (content.isNullOrBlank()) {
             return AiCompletionResult.Failure(AiError.EMPTY_RESPONSE)
         }
-        return AiCompletionResult.Success(content)
+        return AiCompletionResult.Success(content, response.usage.toUsage(elapsedMillis))
+    }
+
+    /**
+     * 把响应用量转成 [AiUsage]；字段缺失时补 0（而不是让整条成功的回复因为一个统计字段失败）。
+     *
+     * 统计信息拿不到不该影响功能本身 —— 用量是「顺带采集」的观测数据，不是业务数据。
+     */
+    private fun UsageDto?.toUsage(elapsedMillis: Long): AiUsage? {
+        if (this == null) return null
+        val prompt = promptTokens ?: 0
+        val completion = completionTokens ?: 0
+        return AiUsage(
+            promptTokens = prompt,
+            completionTokens = completion,
+            totalTokens = totalTokens ?: (prompt + completion),
+            cachedTokens = promptTokensDetails?.promptCacheHitTokens ?: 0,
+            elapsedMillis = elapsedMillis
+        )
     }
 
     private fun mapHttpError(code: Int): AiError = when (code) {

@@ -77,6 +77,38 @@
 - **失败也写进对话**：401 / 402 / 429 / 断网各自给出可操作的中文说明（去改 Key / 去充值 / 稍后再试 / 检查网络），而不是笼统的「请求失败」。
 - **「恢复初始状态」会一并清空对话**，备份文件里**不含**对话记录。
 
+**解析自测（评估集）**
+
+助手页菜单里的「解析自测」会用 [AiEvalSet](app/src/main/java/com/example/personalledger/AiEvalSet.kt) 里的
+**22 条真实语句**各调一次 API，跑完给出分项准确率。输出格式如下（**以下为格式示例，不是实测值** ——
+实际数字必须自己在真机上跑出来，凭空的准确率毫无意义）：
+
+```
+整句全对：X / 22 条（X%）
+用例：22 条（记账 20 条 / 不记账 2 条），共期望 22 笔账目
+以下分母为「期望账目笔数 22」：
+  金额 X/22    分类 X/22    方向 X/22
+以下分母为「指定了该字段的笔数」：
+  日期 X/22    备注 X/2
+请求失败：X 条
+平均延迟：X ms
+平均用量：X tokens（输入 X，缓存命中率 X%）
+```
+
+逐条明细写入 logcat（`adb logcat -s AiEval`），包含每句的**实际解析结果** —— 那才是改提示词的依据。
+
+> **为什么把它做进 App 而不是写成一次性脚本**：它跑的是**生产同一条管线**（同一个系统提示词、同一个客户端、同一个解析器），
+> 指标才反映线上真实表现。脚本必然要复制一份逻辑，那份副本一旦和线上漂移，测出来的准确率就没有意义了。
+>
+> **评估集的三条设计原则**（写错任何一条，指标就不可信）：
+> 1. **期望值由人手工写**，不是拿模型输出反推 —— 后者等于自己出题自己抄答案，指标永远好看但毫无意义；
+> 2. **日期用「相对今天的天数偏移」**（0=今天，-1=昨天）而不是写死日期，否则隔天跑就全错；
+> 3. **备注按关键词包含判定而不是逐字相等**，否则模型的正常措辞变化会被判成错误，让准确率虚低。
+>
+> 分母口径分两种，报告里必须分别标注：**金额 / 分类 / 方向** 的每一笔都要判，分母是**期望账目笔数**（22）；
+> **日期 / 备注** 只有显式声明了该项的用例才参与（备注仅 2 条用例声明，所以是 `X/2`）。
+> 不写清楚就会出现「记账 20 条」和「金额 22/22」并列、看着自相矛盾的情况 —— 屏幕上真的出现过。
+
 ---
 
 ## 界面
@@ -215,7 +247,7 @@ PersonalLedger/
 ├── app/
 │   ├── src/main/
 │   │   ├── AndroidManifest.xml                # 组件与权限声明
-│   │   ├── java/com/example/personalledger/   # 48 个 Kotlin 源文件
+│   │   ├── java/com/example/personalledger/   # 50 个 Kotlin 源文件
 │   │   │   ├── App.kt / MainActivity.kt                        # 启动与导航容器
 │   │   │   ├── HomeFragment.kt / ReportFragment.kt             # 两个主页面
 │   │   │   ├── AssistantFragment.kt                            # AI 助手页
@@ -233,6 +265,7 @@ PersonalLedger/
 │   │   │   ├── LedgerDateTime.kt / CsvLedgerParser.kt          # 时间换算 / CSV 解析（纯函数）
 │   │   │   ├── DeepSeekClient.kt                               # 唯一的联网代码
 │   │   │   ├── AiBookkeepingParser.kt / AiPrompt.kt / DefaultCategories.kt  # 助手解析与提示词（纯函数）
+│   │   │   ├── AiEvalSet.kt / AiEvalRunner.kt                  # 评估集与解析自测评分
 │   │   │   ├── AiSettings.kt                                   # API Key 与模型
 │   │   │   ├── LedgerNotificationListenerService.kt            # 通知监听服务
 │   │   │   ├── NotificationPaymentParser.kt / AutoBookkeepingRules.kt  # 自动记账解析与规则

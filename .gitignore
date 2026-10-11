@@ -12,6 +12,21 @@
 # AI assistant workspace data (local only)
 /.workbuddy-ai
 
+# 工具在本目录运行时留下的产物（不属于本仓库）
+# 这些是 DSH / WorkBuddy 之类工具把「当前工作目录」当成工作区时生成的，
+# 与「轻账」本身无关。.pnpm-store 尤其危险：单它就 73MB / 上万个文件，
+# 一旦被 `git add -A` 扫进去，会彻底淹没有意义的改动。
+/.pnpm-store
+/.dsh-backup-*
+/.wb-host-bridge
+/.wb-*.cjs
+/.wb-*.mjs
+/.regquery.ps1
+/.regout.txt
+/.regerr.txt
+/.re.txt
+/.ro.txt
+
 # Build outputs
 /build
 /app/release

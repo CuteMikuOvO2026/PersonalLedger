@@ -226,4 +226,15 @@
     <string name="ai_error_network">网络不可用，请检查网络连接</string>
     <string name="ai_error_truncated">这句话太长了，回复被截断。请拆成几句分别发送</string>
     <string name="ai_error_parse">没能理解这句话，请换个说法（例如「昨天打车 23」）</string>
+    <string name="ai_error_empty">模型这次没返回内容（偶发情况），请再发一次</string>
+    <string name="ai_error_unknown">请求异常，请稍后再试</string>
+    <!-- 解析失败时把模型原话附在气泡里，便于直接截图定位，不必连电脑抓日志 -->
+    <string name="ai_model_returned">模型返回：%1$s</string>
+
+    <!-- 解析自测（评估集） -->
+    <string name="ai_run_eval">解析自测</string>
+    <string name="ai_eval_confirm_message">将对 %1$d 条用例各调用一次 DeepSeek API，用于统计解析准确率。\n\n耗时约 1~2 分钟，会产生少量费用。是否继续？</string>
+    <string name="ai_eval_running">正在评估 %1$d/%2$d…</string>
+    <string name="ai_eval_done_title">评估结果</string>
+    <string name="ai_eval_logged">逐条明细已写入 logcat（TAG: AiEval）</string>
 </resources>

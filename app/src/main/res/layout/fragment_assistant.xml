@@ -16,7 +16,11 @@
         app:layout_constraintBottom_toTopOf="@id/layout_input"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- 空状态：引导用户「怎么说」，并说明要点右上角的设置填 Key -->
+    <!-- 空状态：引导用户「怎么说」，并说明要点右上角的设置填 Key。
+
+         `visibility="gone"` 是刻意的默认值：它与 recycler_chat 在同一个约束位置且**绘制在其之上**
+         （声明顺序在后），一旦哪天判断写错让它跟着列表一起显示，就会像贴纸一样盖在确认卡片上。
+         默认隐藏后，这类失误的表现退化为「空状态没出现」，而不是「界面重叠错乱」。 -->
     <LinearLayout
         android:id="@+id/layout_empty"
         android:layout_width="match_parent"
@@ -24,9 +28,11 @@
         android:gravity="center_horizontal"
         android:orientation="vertical"
         android:paddingHorizontal="32dp"
+        android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/layout_input"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.38">
+        app:layout_constraintVertical_bias="0.38"
+        tools:visibility="visible">
 
         <ImageView
             android:layout_width="56dp"

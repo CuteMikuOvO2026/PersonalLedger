@@ -1,6 +1,7 @@
 package com.example.personalledger
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -39,6 +40,29 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     /** 一次性提示文案，由界面消费后调用 [clearHint] 复位，避免旋转屏幕后重复弹。 */
     val hint: LiveData<String?> = _hint
+
+    // ---------- 解析自测（评估集） ----------
+
+    private val _evalRunning = MutableLiveData(false)
+
+    /**
+     * 是否正在评估。
+     *
+     * 它是进度弹窗的**唯一权威状态**：进度值本身不足以决定「该不该有弹窗」，因为 `postValue`
+     * 发出的值可能在评估结束之后才被主线程执行 —— 只按进度值判断，迟到的旧值就会把已经关掉的
+     * 弹窗重新弹出来（并叠在结果弹窗上）。
+     */
+    val evalRunning: LiveData<Boolean> = _evalRunning
+
+    private val _evalProgress = MutableLiveData<Pair<Int, Int>?>(null)
+
+    /** 评估进度「已完成 to 总数」；null 表示当前没有在评估。 */
+    val evalProgress: LiveData<Pair<Int, Int>?> = _evalProgress
+
+    private val _evalReport = MutableLiveData<AiEvalReport?>(null)
+
+    /** 一次评估的汇总结果，由界面消费后调用 [clearEvalReport] 复位。 */
+    val evalReport: LiveData<AiEvalReport?> = _evalReport
 
     init {
         // 与 MainViewModel 的 init 重复是**刻意的**：助手页可能经 Activity 重建直接恢复
@@ -83,14 +107,19 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 val systemPrompt = AiPrompt.systemPrompt(
                     nowMillis = now,
                     expenseCategories = categories.expense,
-                    incomeCategories = categories.income
+                    incomeCategories = categories.income,
+                    // 历史作为**背景**注入提示词，而不是作为多条 user 消息发出去。
+                    // 后者会让模型把历史里每一句都当成新的记账请求重新解析一遍
+                    // ——「只说了一句咖啡15，却把前面几轮的话全记成账」就是这么来的。
+                    recentUserInputs = history.map { it.content }
                 )
 
                 when (val outcome = requestReply(
                     apiKey = AiSettings.apiKey(app),
                     model = AiSettings.model(app),
                     systemPrompt = systemPrompt,
-                    turns = history + AiChatTurn(ROLE_USER, content),
+                    // 只发本次输入这一条 user 消息：模型看到的必须是「背景 + 一个待处理请求」
+                    turns = listOf(AiChatTurn(ROLE_USER, content)),
                     allowedCategories = (categories.expense + categories.income).toSet(),
                     nowMillis = now
                 )) {
@@ -104,7 +133,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
                     is AiOutcome.Failed -> repository.appendChatMessage(
                         role = ChatRole.ASSISTANT,
-                        content = app.getString(errorMessageRes(outcome.error))
+                        content = describeFailure(app, outcome)
                     )
                 }
             } finally {
@@ -130,12 +159,18 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         nowMillis: Long
     ): AiOutcome {
         var lastError = AiError.UNKNOWN
-        repeat(MAX_ATTEMPTS) {
+        var lastRawContent: String? = null
+        repeat(MAX_ATTEMPTS) { attempt ->
             when (val result = DeepSeekClient.complete(apiKey, model, systemPrompt, turns)) {
                 is AiCompletionResult.Success -> {
                     val parsed = AiBookkeepingParser.parse(result.content, allowedCategories, nowMillis)
                     if (parsed != null) return AiOutcome.Parsed(parsed)
                     lastError = AiError.PARSE_ERROR
+                    // 留住模型原话：既写日志，也随错误气泡显示给用户（省掉连电脑抓 adb 那一步）。
+                    // 不这么做的话 content 会被静默丢弃，界面上只剩一句「没能理解」，
+                    // 无法区分是模型返回了非法 JSON、还是字段不合规被逐笔丢弃 —— 两者修法完全不同。
+                    lastRawContent = result.content
+                    Log.e(TAG_PARSE, "解析失败（第 ${attempt + 1} 次）。模型原始输出：${result.content.take(1200)}")
                 }
 
                 is AiCompletionResult.Failure -> {
@@ -144,7 +179,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
         }
-        return AiOutcome.Failed(lastError)
+        return AiOutcome.Failed(lastError, lastRawContent)
     }
 
     // ---------- 确认 / 忽略 ----------
@@ -186,6 +221,75 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         _hint.value = null
     }
 
+    // ---------- 解析自测 ----------
+
+    /**
+     * 跑一遍评估集，统计当前提示词与模型下的解析准确率。
+     *
+     * 为什么做成 App 内的功能而不是一次性脚本：它跑的是**生产同一条管线**
+     * （同一个系统提示词、同一个客户端、同一个解析器），指标才反映线上真实表现。
+     * 写脚本必然要复制一份逻辑，那份副本一旦和线上漂移，测出来的准确率就没有意义了。
+     *
+     * 代价是评估集进了 APK —— 对个人项目可以接受；若将来要上架，应移到 debug 构建里。
+     */
+    fun runEval() {
+        // 防重入：评估要花一两分钟，重复触发会把同一批用例跑两遍、白花两遍钱
+        if (_evalRunning.value == true) return
+        if (_sending.value == true) return
+
+        val app = getApplication<Application>()
+        if (!AiSettings.isConfigured(app)) {
+            _hint.value = app.getString(R.string.ai_not_configured)
+            return
+        }
+
+        _evalRunning.value = true
+        _evalProgress.value = 0 to AiEvalSet.cases.size
+        viewModelScope.launch {
+            try {
+                val names = loadCategoryNames()
+                val report = AiEvalRunner(
+                    apiKey = AiSettings.apiKey(app),
+                    model = AiSettings.model(app),
+                    expenseCategories = names.expense,
+                    incomeCategories = names.income
+                ).evaluate { done, total ->
+                    // 这里可以放心用 postValue：迟到的旧值会被界面的 evalRunning 闸门挡掉，
+                    // 不会再把进度弹窗弹回来（这正是之前那个「结果出来了还叠着进度弹窗」的成因）
+                    _evalProgress.postValue(done to total)
+                }
+                logEvalReport(report)
+                _evalReport.value = report
+            } finally {
+                // 顺序要紧：先关掉 running（界面据此收掉进度弹窗），再清进度值。
+                // 反过来会让界面先收到一次「进度为空、但仍在运行」的矛盾状态。
+                _evalRunning.value = false
+                _evalProgress.value = null
+            }
+        }
+    }
+
+    fun clearEvalReport() {
+        _evalReport.value = null
+    }
+
+    /**
+     * 逐条明细写进 logcat。
+     *
+     * 弹窗只放得下汇总，而「哪几句错了、错成什么样」才是改提示词的依据 —— 那部分必须落到
+     * 能复制、能留档的地方，也就是日志。
+     */
+    private fun logEvalReport(report: AiEvalReport) {
+        Log.i(TAG_EVAL, "===== 解析自测汇总 =====")
+        report.summaryLines().forEach { Log.i(TAG_EVAL, it) }
+        report.results.forEachIndexed { index, result ->
+            val mark = if (result.fullyCorrect) "OK" else "NG"
+            val failure = result.failure?.let { " 失败:$it" }.orEmpty()
+            Log.i(TAG_EVAL, "${index + 1}. [$mark] ${result.case.input} → ${result.actualSummary}$failure")
+        }
+        Log.i(TAG_EVAL, "===== 汇总结束 =====")
+    }
+
     // ---------- 组装提示词所需的数据 ----------
 
     private class CategoryNames(val expense: List<String>, val income: List<String>)
@@ -206,13 +310,25 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /**
-     * 最近若干轮对话作为上下文，用于「刚才那笔改成 20」这类追问。
+     * 最近若干轮**用户**发言，作为上下文。
      *
-     * 只取末尾 [HISTORY_TURNS] 条：完整历史会让每次请求的 token 数随对话长度无限增长，
-     * 而记账这个场景对久远上下文的依赖很弱。
+     * ⚠️ 刻意**不把助手消息**放进历史 —— 这是一个真实 bug 的修复。
+     *
+     * 助手的 `content` 是给人看的散文（「已解析出 1 笔支出」「没能理解这句话…」），
+     * **不是**模型当初输出的 JSON。把它当作 assistant 轮次回喂，等于在提示词里现场演示
+     * 「助手应该用散文回答」，而 system 里明明写着「只输出一个 json 对象」。
+     * 这种自相矛盾的示范会诱导模型改用散文，于是这一轮解析失败；而失败信息又会作为助手
+     * 消息进入下一轮历史，**自我强化**，对话越用越糟。
+     *
+     * 这也正好解释了「评估 22 条几乎全过、实际聊天却逐渐失败」的反差：评估里每条用例
+     * 都是无历史的独立请求（见 [AiEvalRunner]），而聊天会不断累积污染。
+     *
+     * 只保留用户发言的代价很小：助手的散文本来就不含结构化信息，对「改成 20」这类追问
+     * 也帮不上忙（真正要支持追问，得把模型原始 JSON 也存下来回喂，那是另一件事）。
      */
     private suspend fun recentTurns(): List<AiChatTurn> =
         repository.chatMessages.first()
+            .filter { it.role == ChatRole.USER }
             .takeLast(HISTORY_TURNS)
             .map { AiChatTurn(it.role.value, it.content) }
 
@@ -254,14 +370,34 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         AiError.SERVER_ERROR -> R.string.ai_error_server
         AiError.NETWORK -> R.string.ai_error_network
         AiError.TRUNCATED -> R.string.ai_error_truncated
-        AiError.EMPTY_RESPONSE, AiError.PARSE_ERROR, AiError.UNKNOWN -> R.string.ai_error_parse
+        // 三种失败的原因与修法完全不同，不能共用一句「没能理解」：
+        // 空回复是偶发、重发即可；解析失败是模型输出不合规、要改提示词；UNKNOWN 多为响应结构异常。
+        AiError.EMPTY_RESPONSE -> R.string.ai_error_empty
+        AiError.PARSE_ERROR -> R.string.ai_error_parse
+        AiError.UNKNOWN -> R.string.ai_error_unknown
+    }
+
+    /**
+     * 把失败原因整理成气泡文案；解析失败时**附上模型原话**。
+     *
+     * 附原话是为了省掉「连电脑抓 adb 日志」这一步：截图就能定位。诊断信息贴在对话里
+     * 也符合这个功能一贯的取舍 —— 错误要留痕，不能一闪而过。
+     */
+    private fun describeFailure(app: Application, outcome: AiOutcome.Failed): String {
+        val base = app.getString(errorMessageRes(outcome.error))
+        val raw = outcome.rawContent?.takeIf { it.isNotBlank() } ?: return base
+        return base + "\n\n" + app.getString(R.string.ai_model_returned, raw.take(500))
     }
 
     /** [requestReply] 的内部结果，避免用异常表达「模型没听懂」这种正常情况。 */
     private sealed interface AiOutcome {
         data class Parsed(val reply: AiReply) : AiOutcome
 
-        data class Failed(val error: AiError) : AiOutcome
+        /**
+         * @param rawContent 解析失败时模型的原始输出，用于把诊断信息显示给用户；
+         *   其他失败（网络、鉴权等）没有可展示的模型输出，为 null。
+         */
+        data class Failed(val error: AiError, val rawContent: String? = null) : AiOutcome
     }
 
     companion object {
@@ -276,5 +412,11 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
         /** 总尝试次数（含首次）。 */
         private const val MAX_ATTEMPTS = 2
+
+        /** 评估明细的日志标签，`adb logcat -s AiEval` 可直接过滤。 */
+        private const val TAG_EVAL = "AiEval"
+
+        /** 解析失败的日志标签，`adb logcat -s AiParse` 可直接过滤。 */
+        private const val TAG_PARSE = "AiParse"
     }
 }
