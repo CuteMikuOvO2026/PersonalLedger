@@ -114,7 +114,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                     recentUserInputs = history.map { it.content }
                 )
 
-                when (val outcome = requestReply(
+                when (val outcome = AiRequestPolicy.requestAndParse(
                     apiKey = AiSettings.apiKey(app),
                     model = AiSettings.model(app),
                     systemPrompt = systemPrompt,
@@ -123,7 +123,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                     allowedCategories = (categories.expense + categories.income).toSet(),
                     nowMillis = now
                 )) {
-                    is AiOutcome.Parsed -> repository.appendChatMessage(
+                    is AiReplyOutcome.Parsed -> repository.appendChatMessage(
                         role = ChatRole.ASSISTANT,
                         content = outcome.reply.reply.ifEmpty {
                             app.getString(R.string.ai_reply_empty)
@@ -131,7 +131,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                         draft = outcome.reply.entries
                     )
 
-                    is AiOutcome.Failed -> repository.appendChatMessage(
+                    is AiReplyOutcome.Failed -> repository.appendChatMessage(
                         role = ChatRole.ASSISTANT,
                         content = describeFailure(app, outcome)
                     )
@@ -141,45 +141,6 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 _sending.value = false
             }
         }
-    }
-
-    /**
-     * 请求一次模型并解析，失败时**只对「偶发」的两类失败重试一次**。
-     *
-     * 重试范围是刻意收窄的：DeepSeek 的 JSON Output 已知会偶发返回空内容，模型偶尔也会
-     * 返回不合法的 JSON，这两种重试有意义。而 401 / 402 / 429 / 断网重试只是白白多等一次
-     * 往返、甚至更容易触发限流，直接告诉用户怎么办更快。
-     */
-    private suspend fun requestReply(
-        apiKey: String,
-        model: String,
-        systemPrompt: String,
-        turns: List<AiChatTurn>,
-        allowedCategories: Set<String>,
-        nowMillis: Long
-    ): AiOutcome {
-        var lastError = AiError.UNKNOWN
-        var lastRawContent: String? = null
-        repeat(MAX_ATTEMPTS) { attempt ->
-            when (val result = DeepSeekClient.complete(apiKey, model, systemPrompt, turns)) {
-                is AiCompletionResult.Success -> {
-                    val parsed = AiBookkeepingParser.parse(result.content, allowedCategories, nowMillis)
-                    if (parsed != null) return AiOutcome.Parsed(parsed)
-                    lastError = AiError.PARSE_ERROR
-                    // 留住模型原话：既写日志，也随错误气泡显示给用户（省掉连电脑抓 adb 那一步）。
-                    // 不这么做的话 content 会被静默丢弃，界面上只剩一句「没能理解」，
-                    // 无法区分是模型返回了非法 JSON、还是字段不合规被逐笔丢弃 —— 两者修法完全不同。
-                    lastRawContent = result.content
-                    Log.e(TAG_PARSE, "解析失败（第 ${attempt + 1} 次）。模型原始输出：${result.content.take(1200)}")
-                }
-
-                is AiCompletionResult.Failure -> {
-                    if (result.error != AiError.EMPTY_RESPONSE) return AiOutcome.Failed(result.error)
-                    lastError = result.error
-                }
-            }
-        }
-        return AiOutcome.Failed(lastError, lastRawContent)
     }
 
     // ---------- 确认 / 忽略 ----------
@@ -231,8 +192,11 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
      * 写脚本必然要复制一份逻辑，那份副本一旦和线上漂移，测出来的准确率就没有意义了。
      *
      * 代价是评估集进了 APK —— 对个人项目可以接受；若将来要上架，应移到 debug 构建里。
+     *
+     * @param extended true 跑[扩展集][AiEvalSet.extendedCases]，用于检查主集上的成绩是否过拟合；
+     *   false（默认）跑[主集][AiEvalSet.cases]。两份用例共用同一套评分、重试与展示逻辑。
      */
-    fun runEval() {
+    fun runEval(extended: Boolean = false) {
         // 防重入：评估要花一两分钟，重复触发会把同一批用例跑两遍、白花两遍钱
         if (_evalRunning.value == true) return
         if (_sending.value == true) return
@@ -243,22 +207,23 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
 
+        val cases = if (extended) AiEvalSet.extendedCases else AiEvalSet.cases
         _evalRunning.value = true
-        _evalProgress.value = 0 to AiEvalSet.cases.size
+        _evalProgress.value = 0 to cases.size
         viewModelScope.launch {
             try {
-                val names = loadCategoryNames()
+                // ⚠️ 评估用 [AiEvalSet] 里**冻结**的分类清单，不读用户自定义分类 —— 见 [AiEvalSet.expenseCategories]。
                 val report = AiEvalRunner(
                     apiKey = AiSettings.apiKey(app),
                     model = AiSettings.model(app),
-                    expenseCategories = names.expense,
-                    incomeCategories = names.income
-                ).evaluate { done, total ->
+                    expenseCategories = AiEvalSet.expenseCategories,
+                    incomeCategories = AiEvalSet.incomeCategories
+                ).evaluate(cases) { done, total ->
                     // 这里可以放心用 postValue：迟到的旧值会被界面的 evalRunning 闸门挡掉，
                     // 不会再把进度弹窗弹回来（这正是之前那个「结果出来了还叠着进度弹窗」的成因）
                     _evalProgress.postValue(done to total)
                 }
-                logEvalReport(report)
+                logEvalReport(report, extended)
                 _evalReport.value = report
             } finally {
                 // 顺序要紧：先关掉 running（界面据此收掉进度弹窗），再清进度值。
@@ -279,13 +244,20 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
      * 弹窗只放得下汇总，而「哪几句错了、错成什么样」才是改提示词的依据 —— 那部分必须落到
      * 能复制、能留档的地方，也就是日志。
      */
-    private fun logEvalReport(report: AiEvalReport) {
-        Log.i(TAG_EVAL, "===== 解析自测汇总 =====")
+    private fun logEvalReport(report: AiEvalReport, extended: Boolean) {
+        val setName = if (extended) "扩展集" else "主集"
+        Log.i(TAG_EVAL, "===== 解析自测汇总（$setName）=====")
         report.summaryLines().forEach { Log.i(TAG_EVAL, it) }
         report.results.forEachIndexed { index, result ->
             val mark = if (result.fullyCorrect) "OK" else "NG"
             val failure = result.failure?.let { " 失败:$it" }.orEmpty()
-            Log.i(TAG_EVAL, "${index + 1}. [$mark] ${result.case.input} → ${result.actualSummary}$failure")
+            // 重试救回的标出来：这类用例 [failure] 为 null（看着是干净的成功），
+            // 但模型首次并没有答对。不标出来就没法从明细里看出模型到底稳不稳。
+            val retried = result.firstAttemptFailure
+                ?.takeIf { result.failure == null }
+                ?.let { " 重试救回（首次:$it）" }
+                .orEmpty()
+            Log.i(TAG_EVAL, "${index + 1}. [$mark] ${result.case.input} → ${result.actualSummary}$failure$retried")
         }
         Log.i(TAG_EVAL, "===== 汇总结束 =====")
     }
@@ -383,21 +355,10 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
      * 附原话是为了省掉「连电脑抓 adb 日志」这一步：截图就能定位。诊断信息贴在对话里
      * 也符合这个功能一贯的取舍 —— 错误要留痕，不能一闪而过。
      */
-    private fun describeFailure(app: Application, outcome: AiOutcome.Failed): String {
+    private fun describeFailure(app: Application, outcome: AiReplyOutcome.Failed): String {
         val base = app.getString(errorMessageRes(outcome.error))
         val raw = outcome.rawContent?.takeIf { it.isNotBlank() } ?: return base
         return base + "\n\n" + app.getString(R.string.ai_model_returned, raw.take(500))
-    }
-
-    /** [requestReply] 的内部结果，避免用异常表达「模型没听懂」这种正常情况。 */
-    private sealed interface AiOutcome {
-        data class Parsed(val reply: AiReply) : AiOutcome
-
-        /**
-         * @param rawContent 解析失败时模型的原始输出，用于把诊断信息显示给用户；
-         *   其他失败（网络、鉴权等）没有可展示的模型输出，为 null。
-         */
-        data class Failed(val error: AiError, val rawContent: String? = null) : AiOutcome
     }
 
     companion object {
@@ -410,13 +371,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         /** 随请求发送的历史轮数。 */
         private const val HISTORY_TURNS = 6
 
-        /** 总尝试次数（含首次）。 */
-        private const val MAX_ATTEMPTS = 2
-
         /** 评估明细的日志标签，`adb logcat -s AiEval` 可直接过滤。 */
         private const val TAG_EVAL = "AiEval"
-
-        /** 解析失败的日志标签，`adb logcat -s AiParse` 可直接过滤。 */
-        private const val TAG_PARSE = "AiParse"
     }
 }

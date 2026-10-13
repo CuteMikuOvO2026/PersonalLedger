@@ -233,6 +233,7 @@
 
     <!-- 解析自测（评估集） -->
     <string name="ai_run_eval">解析自测</string>
+    <string name="ai_run_eval_extended">解析自测（扩展集 · 过拟合检查）</string>
     <string name="ai_eval_confirm_message">将对 %1$d 条用例各调用一次 DeepSeek API，用于统计解析准确率。\n\n耗时约 1~2 分钟，会产生少量费用。是否继续？</string>
     <string name="ai_eval_running">正在评估 %1$d/%2$d…</string>
     <string name="ai_eval_done_title">评估结果</string>

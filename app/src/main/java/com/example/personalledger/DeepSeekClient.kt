@@ -153,11 +153,28 @@ object DeepSeekClient {
         @SerializedName("prompt_tokens") val promptTokens: Int?,
         @SerializedName("completion_tokens") val completionTokens: Int?,
         @SerializedName("total_tokens") val totalTokens: Int?,
-        @SerializedName("prompt_tokens_details") val promptTokensDetails: PromptTokensDetailsDto?
+        @SerializedName("prompt_tokens_details") val promptTokensDetails: PromptTokensDetailsDto?,
+        /**
+         * 顶层的缓存命中原生字段，与 `prompt_tokens_details.cached_tokens` **同值**。
+         *
+         * 两个都读、互为兜底：官方同时下发这两个字段，任何一个改名都不至于让命中率掉回 0。
+         */
+        @SerializedName("prompt_cache_hit_tokens") val promptCacheHitTokens: Int?
     )
 
     private data class PromptTokensDetailsDto(
-        @SerializedName("prompt_cache_hit_tokens") val promptCacheHitTokens: Int?
+        /**
+         * 缓存命中的输入 token 数。
+         *
+         * ⚠️ 这里曾经写的是 `prompt_cache_hit_tokens` —— **嵌套路径下并没有这个字段**，
+         * 它只在 `usage` 顶层。Gson 对不存在的路径返回 null，而调用处用 `?: 0` 兜底，
+         * 于是命中率恒为 0，且**永远不会报错**：日志里「缓存命中 0」看着完全正常。
+         *
+         * 教训：给解析外部结构的字段加默认值，会把一次 schema 漂移变成一个看起来正常的零。
+         * 这个 bug 让 [AiUsage.cachedTokens] 的成本意义完全失效（命中部分按 1/50 计价），
+         * 而它被发现靠的是**打日志看原始响应**，不是看代码。
+         */
+        @SerializedName("cached_tokens") val cachedTokens: Int?
     )
 
     /**
@@ -282,6 +299,9 @@ object DeepSeekClient {
      * 把响应用量转成 [AiUsage]；字段缺失时补 0（而不是让整条成功的回复因为一个统计字段失败）。
      *
      * 统计信息拿不到不该影响功能本身 —— 用量是「顺带采集」的观测数据，不是业务数据。
+     *
+     * 缓存命中的两个来源按「先嵌套、后顶层」取值。注意这里**不能**只看一个：
+     * 之前只看嵌套路径上一个不存在的字段名，命中率静默恒为 0（详见 [PromptTokensDetailsDto]）。
      */
     private fun UsageDto?.toUsage(elapsedMillis: Long): AiUsage? {
         if (this == null) return null
@@ -291,7 +311,7 @@ object DeepSeekClient {
             promptTokens = prompt,
             completionTokens = completion,
             totalTokens = totalTokens ?: (prompt + completion),
-            cachedTokens = promptTokensDetails?.promptCacheHitTokens ?: 0,
+            cachedTokens = promptTokensDetails?.cachedTokens ?: promptCacheHitTokens ?: 0,
             elapsedMillis = elapsedMillis
         )
     }

@@ -99,7 +99,12 @@ class AssistantFragment : Fragment() {
                     }
 
                     R.id.action_run_eval -> {
-                        showEvalConfirmDialog()
+                        showEvalConfirmDialog(extended = false)
+                        true
+                    }
+
+                    R.id.action_run_eval_extended -> {
+                        showEvalConfirmDialog(extended = true)
                         true
                     }
 
@@ -236,16 +241,24 @@ class AssistantFragment : Fragment() {
         evalProgressDialog = null
     }
 
-    private fun showEvalConfirmDialog() {
+    /**
+     * 确认后开跑。
+     *
+     * @param extended true 跑[扩展集][AiEvalSet.extendedCases]（过拟合检查），
+     *   false 跑[主集][AiEvalSet.cases]。两者共用同一套评分与展示，只有用例列表不同 ——
+     *   它们要回答的是两个不同的问题，但衡量方式必须完全一致，否则结果没法互相印证。
+     */
+    private fun showEvalConfirmDialog(extended: Boolean) {
         if (!AiSettings.isConfigured(requireContext())) {
             Toast.makeText(requireContext(), R.string.ai_not_configured, Toast.LENGTH_SHORT).show()
             showAiSettingsDialog()
             return
         }
+        val count = if (extended) AiEvalSet.extendedCases.size else AiEvalSet.cases.size
         AlertDialog.Builder(requireContext())
-            .setTitle(R.string.ai_run_eval)
-            .setMessage(getString(R.string.ai_eval_confirm_message, AiEvalSet.cases.size))
-            .setPositiveButton(R.string.confirm) { _, _ -> viewModel.runEval() }
+            .setTitle(if (extended) R.string.ai_run_eval_extended else R.string.ai_run_eval)
+            .setMessage(getString(R.string.ai_eval_confirm_message, count))
+            .setPositiveButton(R.string.confirm) { _, _ -> viewModel.runEval(extended) }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }

@@ -23,8 +23,11 @@ android {
         applicationId = "com.example.personalledger"
         minSdk = 24
         targetSdk = 36
+        // versionCode 从 1.0 起一直是 1：本应用不通过应用商店分发，升级靠覆盖安装，
+        // 系统不校验 versionCode，因此版本一律由 versionName 与 git tag 标识。
+        // 将来若要上架，再从这里开始逐次递增。
         versionCode = 1
-        versionName = "2.5"
+        versionName = "2.5.1"
     }
 
     buildTypes {
@@ -39,6 +42,13 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+    testOptions {
+        unitTests {
+            // 被测代码里个别路径会碰到 android.util.Log。让它返回默认值而不是抛
+            // 「not mocked」，这样纯 JVM 测试不必为了打一行日志而引入 Robolectric。
+            isReturnDefaultValues = true
+        }
     }
 }
 
@@ -59,4 +69,9 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     ksp(libs.androidx.room.compiler)
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+
+    // 纯 JVM 单元测试：被测对象都是不依赖 Android 框架的纯函数
+    // （重试策略、模型输出解析、评分口径、统计换算）。
+    // 刻意不引入 Robolectric / Mockito —— 离线环境取不到，且这些逻辑本就不需要它们。
+    testImplementation(libs.junit)
 }

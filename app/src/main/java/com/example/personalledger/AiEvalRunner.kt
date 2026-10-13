@@ -24,12 +24,29 @@ data class AiEvalResult(
     val usage: AiUsage?,
     /** 请求本身失败的分类名（网络 / 鉴权 / ...）；非 null 时各项得分为空。 */
     val failure: String?,
+    /**
+     * **首次尝试**（重试之前）的失败原因；null 表示第一次就拿到了可用结果。
+     *
+     * 与 [failure] 的区别是关键的：一条用例可能首次返回空回复、重试后成功 ——
+     * 此时 [failure] 为 null（用户最终拿到了结果），但 [firstAttemptFailure] 有值。
+     * 只统计 [failure] 会把「重试救回来的」当成一次干净的成功，从而**高估模型的可靠性**。
+     */
+    val firstAttemptFailure: String?,
     /** 实际解析结果的可读摘要，供排查用。 */
     val actualSummary: String
 )
 
-/** 汇总指标。 */
-data class AiEvalReport(val results: List<AiEvalResult>) {
+/**
+ * 汇总指标。
+ *
+ * @param model 本次评估使用的模型名。
+ *   必须记下来：准确率离开模型名就没有意义 —— 换一个模型数字会变，而报告上不写的话，
+ *   过两周自己都说不清那个 91% 是谁跑出来的。写进简历的数字尤其需要这个前提。
+ */
+data class AiEvalReport(
+    val results: List<AiEvalResult>,
+    val model: String = ""
+) {
 
     val total: Int get() = results.size
 
@@ -44,6 +61,26 @@ data class AiEvalReport(val results: List<AiEvalResult>) {
 
     /** 请求失败（没拿到模型输出）的条数，与「答错」要分开看。 */
     val failed: Int get() = results.count { it.failure != null }
+
+    /**
+     * **首次尝试**就失败的条数（重试之前）—— 与 [failed] 是两个不同的指标。
+     *
+     * 为什么要单独统计：生产路径对空回复 / 非法 JSON 会重试一次（见 [AiRequestPolicy]），
+     * 而评估跑的是同一条管线，所以评估结果里也含重试。**这是对的** —— 它反映用户实际体验。
+     * 但如果只报这一个数字，就等于让重试把模型的不稳定藏了起来。
+     *
+     * 所以两个都报：[failed] 回答「用户最终有没有拿到结果」，本项回答「模型一次成功的概率有多高」。
+     * 改提示词时看后者，判断线上体验时看前者。
+     */
+    val firstAttemptFailures: Int get() = results.count { it.firstAttemptFailure != null }
+
+    /**
+     * 重试救回来的条数。
+     *
+     * 它同时暴露了「重试」这个机制到底有没有在干活：长期为 0 说明这段重试代码是空转的
+     * （可能是模型行为变了，也可能是重试条件写错了），值得回头看一眼。
+     */
+    val retriedSuccesses: Int get() = firstAttemptFailures - failed
 
     /**
      * 期望产生账目的**用例数**（当前 20）。
@@ -93,17 +130,33 @@ data class AiEvalReport(val results: List<AiEvalResult>) {
      * 原因就是前者是**用例数**、后者是**账目笔数**（有两条用例各含 2 笔）。两者都保留，
      * 但各自标注清楚。
      */
-    fun summaryLines(): List<String> = listOf(
+    fun summaryLines(): List<String> = listOfNotNull(
+        model.takeIf { it.isNotBlank() }?.let { "模型：$it" },
         "整句全对：$fullyCorrect / $total 条（${percent(fullyCorrect, total)}）",
-        "用例：$total 条（记账 $entryCaseCount 条 / 不记账 $noEntryCaseCount 条），共期望 $expectedEntryCount 笔账目",
+        "用例：$total 条（含账目 $entryCaseCount 条 / 纯对话 $noEntryCaseCount 条）；" +
+            "账目笔数：$expectedEntryCount 笔",
         "以下分母为「期望账目笔数 $expectedEntryCount」：",
         "  金额 ${amount.text}    分类 ${category.text}    方向 ${direction.text}",
         "以下分母为「指定了该字段的笔数」：",
         "  日期 ${date.text}    备注 ${note.text}",
         if (failed > 0) "请求失败：$failed 条（未计入正确率）" else "请求失败：0 条",
+        reliabilityLine(),
         "平均延迟：${avgLatencyMillis} ms",
         "平均用量：$avgTotalTokens tokens（输入 $avgPromptTokens，缓存命中率 ${(cacheHitRate * 100).roundToInt()}%）"
     )
+
+    /**
+     * 首次尝试成功率一行。
+     *
+     * 必须与「请求失败」并列出现：只报重试后的结果，等于让重试把模型的不稳定藏起来。
+     * 两个数字各自回答一个不同的问题 —— 前者是「用户最终拿到了吗」，后者是「模型一次做对的概率」。
+     */
+    private fun reliabilityLine(): String {
+        if (firstAttemptFailures == 0) return "首次尝试失败：0 条（模型一次成功）"
+        val rescued = if (retriedSuccesses > 0) "，其中 $retriedSuccesses 条由重试救回" else ""
+        return "首次尝试失败：$firstAttemptFailures / $total 条" +
+            "（一次成功率 ${percent(total - firstAttemptFailures, total)}$rescued）"
+    }
 
     private fun percent(hits: Int, total: Int): String =
         if (total == 0) "—" else "${(hits * 100.0 / total).roundToInt()}%"
@@ -113,8 +166,12 @@ data class AiEvalReport(val results: List<AiEvalResult>) {
  * 评估执行器：拿[评估集][AiEvalSet]去跑**生产同一条管线**。
  *
  * 关键在于「同一条」：同一个 [AiPrompt.systemPrompt]、同一个 [DeepSeekClient]、同一个
- * [AiBookkeepingParser]。如果评估时另写一套简化逻辑，测出来的就不是线上那个东西了 ——
- * 这是评估最常见的自欺方式。
+ * [AiBookkeepingParser]，以及**同一个 [AiRequestPolicy]**（含失败重试）。
+ * 如果评估时另写一套简化逻辑，测出来的就不是线上那个东西了 —— 这是评估最常见的自欺方式。
+ *
+ * 这一点曾经在结构上就不成立：生产对空回复会重试一次，而这里是单次请求。结果是同一批用例，
+ * 评估报出的失败率高于用户实际感受，两个数字谁也解释不了对方。现在重试被抽到
+ * [AiRequestPolicy] 共用，**评估与生产走的是同一段代码**，而不只是同一批注释。
  *
  * 用例之间**互不携带上下文**（每次只发一条 user 消息、不带历史）：评估要测的是「这句话解析得
  * 对不对」，掺进历史会让失败无法归因。
@@ -130,9 +187,9 @@ class AiEvalRunner(
     /**
      * 模型调用入口。
      *
-     * 抽成可注入的参数，是为了**让评分逻辑可以脱离网络验证**：评分算错的话，得到的准确率就是错的，
-     * 而错误的指标比没有指标更糟 —— 它会让人据此做出错误判断。注入之后可以用构造好的响应直接
-     * 检查评分（见 README 里的验证说明）。
+     * 抽成可注入的参数，是为了**让评分与重试逻辑可以脱离网络验证**：评分算错的话，得到的准确率
+     * 就是错的，而错误的指标比没有指标更糟 —— 它会让人据此做出错误判断。注入之后可以用构造好的
+     * 响应直接检查评分与重试判定。
      *
      * 默认值就是生产实现，因此正常路径不受影响。
      */
@@ -166,23 +223,40 @@ class AiEvalRunner(
         val results = ArrayList<AiEvalResult>(cases.size)
         onProgress(0, cases.size)
         cases.forEachIndexed { index, case ->
-            val outcome = complete(systemPrompt, case.input)
-            results += when (outcome) {
-                is AiCompletionResult.Success -> {
-                    val reply = AiBookkeepingParser.parse(outcome.content, allowedCategories, nowMillis)
-                    if (reply == null) {
-                        emptyResult(case, outcome.usage, "PARSE_ERROR", "无法解析模型输出")
-                    } else {
-                        grade(case, reply, outcome.usage, nowMillis)
-                    }
+            // 走生产同一条策略：同样的重试条件、同样的解析、同样的错误收敛
+            val outcome = AiRequestPolicy.requestAndParse(
+                apiKey = apiKey,
+                model = model,
+                systemPrompt = systemPrompt,
+                turns = listOf(AiChatTurn("user", case.input)),
+                allowedCategories = allowedCategories,
+                nowMillis = nowMillis,
+                complete = { _, _, prompt, turns ->
+                    // 评估的注入入口只关心「一句话」，这里还原成生产那次的单条 user 消息
+                    this@AiEvalRunner.complete(prompt, turns.first().content)
                 }
+            )
+            results += when (outcome) {
+                is AiReplyOutcome.Parsed -> grade(
+                    case = case,
+                    reply = outcome.reply,
+                    usage = outcome.usage,
+                    nowMillis = nowMillis,
+                    firstAttemptFailure = outcome.firstAttemptError?.name
+                )
 
-                is AiCompletionResult.Failure -> emptyResult(case, null, outcome.error.name, "请求失败")
+                is AiReplyOutcome.Failed -> emptyResult(
+                    case = case,
+                    usage = null,
+                    failure = outcome.error.name,
+                    summary = if (outcome.rawContent != null) "无法解析模型输出" else "请求失败",
+                    firstAttemptFailure = outcome.firstAttemptError?.name
+                )
             }
             onProgress(index + 1, cases.size)
         }
 
-        return AiEvalReport(results)
+        return AiEvalReport(results, model)
     }
 
     /**
@@ -196,7 +270,8 @@ class AiEvalRunner(
         case: AiEvalCase,
         reply: AiReply,
         usage: AiUsage?,
-        nowMillis: Long
+        nowMillis: Long,
+        firstAttemptFailure: String?
     ): AiEvalResult {
         val expected = case.expect.sortedByDescending { it.amountCents }
         val actual = reply.entries.sortedByDescending { it.amountCents }
@@ -247,6 +322,7 @@ class AiEvalRunner(
             note = note,
             usage = usage,
             failure = null,
+            firstAttemptFailure = firstAttemptFailure,
             actualSummary = describe(actual, nowMillis)
         )
     }
@@ -255,7 +331,8 @@ class AiEvalRunner(
         case: AiEvalCase,
         usage: AiUsage?,
         failure: String,
-        summary: String
+        summary: String,
+        firstAttemptFailure: String? = failure
     ) = AiEvalResult(
         case = case,
         actualCount = -1,
@@ -267,6 +344,7 @@ class AiEvalRunner(
         note = EvalScore(0, 0),
         usage = usage,
         failure = failure,
+        firstAttemptFailure = firstAttemptFailure,
         actualSummary = summary
     )
 

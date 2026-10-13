@@ -42,6 +42,12 @@ object AiPrompt {
     private const val HISTORY_SLOT = "@@HISTORY@@"
 
     /**
+     * 分类判定要点的占位符。与 [HISTORY_SLOT] 同样的理由：要点是多行文本，直接插值会把
+     * 整份提示词的公共最小缩进拉到 0，让每一行都残留 12 个空格 —— 提示词就没法逐行核对了。
+     */
+    private const val CATEGORY_SLOT = "@@CATEGORY@@"
+
+    /**
      * @param nowMillis 当前时间，用于锚定「今天 / 昨天」这类相对说法。
      * @param expenseCategories 允许的支出分类名（内置 + 自定义 + 兜底的「其他」）。
      * @param incomeCategories 允许的收入分类名（内置 + 自定义）。
@@ -69,6 +75,7 @@ object AiPrompt {
             【允许的收入分类】
             ${incomeCategories.joinToString("、")}
 
+            ${CATEGORY_SLOT}
             ${HISTORY_SLOT}
             【输出格式】
             {
@@ -103,7 +110,49 @@ object AiPrompt {
             - **绝对不要编造用户没有提到的账目**。宁可 entries 为空，也不要凭空多记一笔。
         """.trimIndent()
 
-        return template.replace(HISTORY_SLOT, historySection(recentUserInputs))
+        return template
+            .replace(CATEGORY_SLOT, categoryGuidance(expenseCategories, incomeCategories))
+            .replace(HISTORY_SLOT, historySection(recentUserInputs))
+    }
+
+    /**
+     * 分类判定要点：把最容易混的几组用**地点与性质**讲清楚。
+     *
+     * 为什么需要它：实测「超市买菜 67.5」与「便利店买水 3.5」连续四次被记成「餐饮」，
+     * 而这两笔的正确答案都是「购物」。模型是按「买的东西能不能吃」判的，而账本的分类
+     * 习惯是按「发生在哪里」判的 —— 这是一条只给分类名、不给判定口径就学不到的业务规则。
+     *
+     * **每条要点只在对应分类确实存在时才输出**。理由：分类清单里没有「转账」的用户
+     * （那是自定义分类，不是每个人都有），如果提示词里仍写「转账：红包、他人转账……」，
+     * 模型会以为存在这个选项并选中它，然后被 [AiBookkeepingParser] 收敛成「其他」——
+     * 用户看到的是「我明明说了红包，怎么记成其他」，而提示词里那句说明反而成了误导。
+     * 判断「该不该说」的依据必须是实际清单，不是想当然。
+     */
+    private fun categoryGuidance(expense: List<String>, income: List<String>): String {
+        val rules = buildList {
+            if ("餐饮" in expense) {
+                add("- 餐饮：餐厅、外卖、咖啡、奶茶、食堂等**即食消费**。")
+            }
+            if ("购物" in expense) {
+                add(
+                    "- 购物：超市、便利店、菜市场、商场等**零售采购**。在这类场所买的东西即使\n" +
+                        "  能吃能喝（买菜、买水、买零食），也一律归「购物」，**不要归餐饮**。"
+                )
+            }
+            if ("交通" in expense) {
+                add("- 交通：地铁、公交、打车、加油、停车、高速费。")
+            }
+            if ("转账" in income) {
+                add("- 转账：红包、他人转账、借款还款等**资金往来**，既不是工资也不是奖金。")
+            }
+            // 判断顺序单独成条：它是上面各条的用法，不是某个分类的定义
+            if ("购物" in expense && "餐饮" in expense) {
+                add("- 判断顺序：先看**发生在哪里**（超市/便利店 → 购物），再看买的是什么。")
+            }
+        }
+        if (rules.isEmpty()) return ""
+        return "\n【分类判定要点】（这几组最容易混，按地点和性质判断，不要按买的东西判断）\n" +
+            rules.joinToString("\n") + "\n"
     }
 
     /**
@@ -118,14 +167,21 @@ object AiPrompt {
      *
      * 没有历史时返回空串，模板里的占位符整行会被替换掉（`trimIndent` 已先行完成，因此
      * 留下一个空行，对提示词没有影响）。
+     *
+     * ⚠️ **这里同样不能用插值插入多行的 `$quoted`**：那会把本段 `trimIndent()` 的公共最小缩进
+     * 拉到 0，于是「【历史背景】」与「⚠️」两行各残留 12 个空格、而中间的历史行没有缩进。
+     * 外层模板早就修过这个坑（见 [HISTORY_SLOT]），但内层这一段漏了 —— 是单元测试
+     * （`AiPromptTest.多行插值不得让提示词每行残留缩进`）把它翻出来的。
+     * 提示词缩进乱掉不影响模型理解，但会让「逐行核对提示词」这件事没法做。
      */
     private fun historySection(recentUserInputs: List<String>): String {
         if (recentUserInputs.isEmpty()) return ""
         val quoted = recentUserInputs.joinToString("\n") { "- $it" }
-        return """
+        val block = """
             【历史背景】（用户**之前**说过的话，仅供理解「刚才那笔」「它」这类指代）
-            $quoted
+            @@QUOTED@@
             ⚠️ 以上历史内容**都已经处理过了，不要再为它们生成任何账目**。
         """.trimIndent()
+        return block.replace("@@QUOTED@@", quoted)
     }
 }
