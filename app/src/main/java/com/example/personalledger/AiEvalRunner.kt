@@ -33,7 +33,12 @@ data class AiEvalResult(
      */
     val firstAttemptFailure: String?,
     /** 实际解析结果的可读摘要，供排查用。 */
-    val actualSummary: String
+    val actualSummary: String,
+    /**
+     * 模型实际给出的动作类型（[AiAction.type]）。只在 [AiEvalCase.expectAction] 非空时有判分意义，
+     * 其余用例记下来也方便排查「这句话被当成了什么」。
+     */
+    val actualAction: String? = null
 )
 
 /**
@@ -101,6 +106,12 @@ data class AiEvalReport(
     /** 期望不产生账目的用例数（打招呼、问统计），用于验证「不编造账目」。 */
     val noEntryCaseCount: Int get() = total - entryCaseCount
 
+    /** 指令集的用例数（[AiEvalCase.expectAction] 非空）。为 0 表示这份报告不测动作。 */
+    val actionTotal: Int get() = results.count { it.case.expectAction != null }
+
+    /** 指令集里动作判对的条数。 */
+    val actionHits: Int get() = results.count { it.case.expectAction != null && it.fullyCorrect }
+
     val usages: List<AiUsage> get() = results.mapNotNull { it.usage }
 
     val avgLatencyMillis: Int
@@ -130,20 +141,34 @@ data class AiEvalReport(
      * 原因就是前者是**用例数**、后者是**账目笔数**（有两条用例各含 2 笔）。两者都保留，
      * 但各自标注清楚。
      */
-    fun summaryLines(): List<String> = listOfNotNull(
-        model.takeIf { it.isNotBlank() }?.let { "模型：$it" },
-        "整句全对：$fullyCorrect / $total 条（${percent(fullyCorrect, total)}）",
-        "用例：$total 条（含账目 $entryCaseCount 条 / 纯对话 $noEntryCaseCount 条）；" +
-            "账目笔数：$expectedEntryCount 笔",
-        "以下分母为「期望账目笔数 $expectedEntryCount」：",
-        "  金额 ${amount.text}    分类 ${category.text}    方向 ${direction.text}",
-        "以下分母为「指定了该字段的笔数」：",
-        "  日期 ${date.text}    备注 ${note.text}",
-        if (failed > 0) "请求失败：$failed 条（未计入正确率）" else "请求失败：0 条",
-        reliabilityLine(),
-        "平均延迟：${avgLatencyMillis} ms",
-        "平均用量：$avgTotalTokens tokens（输入 $avgPromptTokens，缓存命中率 ${(cacheHitRate * 100).roundToInt()}%）"
-    )
+    fun summaryLines(): List<String> = buildList {
+        model.takeIf { it.isNotBlank() }?.let { add("模型：$it") }
+
+        // 指令集只判「动作对不对」，套用「整句全对 / 逐字段分母」那套口径会输出一堆 0/0，
+        // 让人误以为「金额一条都没对」。两份用例的口径必须分开写。
+        val intentOnly = actionTotal > 0 && actionTotal == total
+        if (intentOnly) {
+            add("指令命中：$actionHits / $total 条（${percent(actionHits, total)}）")
+        } else {
+            add("整句全对：$fullyCorrect / $total 条（${percent(fullyCorrect, total)}）")
+            add(
+                "用例：$total 条（含账目 $entryCaseCount 条 / 纯对话 $noEntryCaseCount 条）；" +
+                    "账目笔数：$expectedEntryCount 笔"
+            )
+            add("以下分母为「期望账目笔数 $expectedEntryCount」：")
+            add("  金额 ${amount.text}    分类 ${category.text}    方向 ${direction.text}")
+            add("以下分母为「指定了该字段的笔数」：")
+            add("  日期 ${date.text}    备注 ${note.text}")
+        }
+
+        add(if (failed > 0) "请求失败：$failed 条（未计入正确率）" else "请求失败：0 条")
+        add(reliabilityLine())
+        add("平均延迟：${avgLatencyMillis} ms")
+        add(
+            "平均用量：$avgTotalTokens tokens（输入 $avgPromptTokens，" +
+                "缓存命中率 ${(cacheHitRate * 100).roundToInt()}%）"
+        )
+    }
 
     /**
      * 首次尝试成功率一行。
@@ -273,6 +298,28 @@ class AiEvalRunner(
         nowMillis: Long,
         firstAttemptFailure: String?
     ): AiEvalResult {
+        // 指令集：只判动作类型，不判账目字段。
+        // 用逐字段口径去打分会把「entries 为空」判成漏记 —— 而改账 / 删账 / 统计本来就不该记账，
+        // 那样得到的低分是在惩罚正确行为。
+        case.expectAction?.let { expectedAction ->
+            val actualAction = reply.action?.type
+            return AiEvalResult(
+                case = case,
+                actualCount = reply.entries.size,
+                fullyCorrect = actualAction == expectedAction,
+                amount = EvalScore(0, 0),
+                category = EvalScore(0, 0),
+                direction = EvalScore(0, 0),
+                date = EvalScore(0, 0),
+                note = EvalScore(0, 0),
+                usage = usage,
+                failure = null,
+                firstAttemptFailure = firstAttemptFailure,
+                actualSummary = reply.action?.summary ?: "（无动作）",
+                actualAction = actualAction
+            )
+        }
+
         val expected = case.expect.sortedByDescending { it.amountCents }
         val actual = reply.entries.sortedByDescending { it.amountCents }
 
@@ -323,7 +370,8 @@ class AiEvalRunner(
             usage = usage,
             failure = null,
             firstAttemptFailure = firstAttemptFailure,
-            actualSummary = describe(actual, nowMillis)
+            actualSummary = describe(actual, nowMillis),
+            actualAction = reply.action?.type
         )
     }
 

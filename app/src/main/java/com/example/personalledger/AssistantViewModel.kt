@@ -13,16 +13,19 @@ import java.util.Locale
 import java.util.UUID
 
 /**
- * AI 助手页的视图模型：把「一句话」变成「一条待确认的账目卡片」。
+ * AI 助手页的视图模型：把「一句话」变成「一张卡片」。
  *
  * 分层上刻意与 [MainViewModel] 完全解耦（与 [ReportViewModel] 各自持有 repository 同一取舍）：
- * 助手有自己的一整套状态（发送中、待确认草稿），塞进 MainViewModel 只会让它继续膨胀。
+ * 助手有自己的一整套状态（发送中、待确认卡片），塞进 MainViewModel 只会让它继续膨胀。
  * 两者共享的是 [LedgerRepository] —— 写进同一张 `ledger_entries` 表，Room 的 Flow 会
  * 自动让首页列表与报表刷新，不需要任何跨 ViewModel 的通知。
  *
- * **助手不直接写账本**：解析结果一律先落成一条带草稿的消息，等用户在卡片上点确认
- * （[confirmDraft]）才写库。原因见 [AiBookkeepingParser] 的说明——模型会编造内容，
- * 而账本里一笔错账用户很难事后发现。
+ * **助手不直接改账本**：新建、修改、删除都先落成一张待确认卡片，等用户在卡片上点确认
+ * （[confirmCard]）才写库。原因见 [AiBookkeepingParser] 的说明——模型会编造内容，
+ * 而账本里一笔错账（或一次误删）用户很难事后发现。
+ *
+ * 动作的分发在 [AiToolRunner] 里，这里只负责三件事：准备输入、把结果写成对话、处理确认。
+ * 这样「什么条件下才算找到一笔」那类判断可以脱离 Android 在 JVM 上测。
  */
 class AssistantViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -79,7 +82,10 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
      * 发送一句自然语言。
      *
      * 流程：先落库用户消息（哪怕后面请求失败，用户也知道自己说过什么）→ 组装提示词 →
-     * 请求模型（失败自动重试一次）→ 把结果（或错误说明）作为助手消息落库。
+     * 请求模型（失败自动重试一次）→ **分发动作**（[AiToolRunner]）→ 把结果（或错误说明）落库。
+     *
+     * 分发这一步是这次改造新增的：模型返回的不再只是「账目」，而是「要做什么」。
+     * 新建 / 修改 / 删除会挂一张待确认卡片，统计会挂一张只读卡片，闲聊只留文字。
      *
      * 错误也写进对话而不是只弹 Toast：网络问题、余额不足这些提示一闪而过更容易被忽略，
      * 而「刚才那句话为什么没记账」需要在对话里留痕。
@@ -123,13 +129,19 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                     allowedCategories = (categories.expense + categories.income).toSet(),
                     nowMillis = now
                 )) {
-                    is AiReplyOutcome.Parsed -> repository.appendChatMessage(
-                        role = ChatRole.ASSISTANT,
-                        content = outcome.reply.reply.ifEmpty {
-                            app.getString(R.string.ai_reply_empty)
-                        },
-                        draft = outcome.reply.entries
-                    )
+                    is AiReplyOutcome.Parsed -> {
+                        val result = AiToolRunner.run(
+                            reply = outcome.reply,
+                            gateway = repository,
+                            nowMillis = now,
+                            allowedCategories = (categories.expense + categories.income).toSet()
+                        )
+                        repository.appendChatMessage(
+                            role = ChatRole.ASSISTANT,
+                            content = replyText(app, result),
+                            card = result.card
+                        )
+                    }
 
                     is AiReplyOutcome.Failed -> repository.appendChatMessage(
                         role = ChatRole.ASSISTANT,
@@ -143,32 +155,105 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /**
+     * 把一次执行结果变成气泡里的文字。
+     *
+     * 三种来源的优先级是有讲究的：
+     * 1. [AiToolResult.notice]（没找到 / 命中多笔 / 没有可改的字段）—— 必须盖掉模型的原话：
+     *    模型说的是它**以为**会发生的事，而这几件事压根没发生。让模型的原话留着，用户会以为
+     *    「已经改好了」。
+     * 2. 模型的话（正常路径）。
+     * 3. 固定文案：统计结果与「模型没出声」的兜底。
+     *
+     * 待确认的修改 / 删除额外补一句「确认后才生效」：模型被要求用「将」「要」的语气，
+     * 但它偶尔仍会写「已删除」，而卡片上还挂着确认按钮 —— 那句话必须被这句兜住。
+     */
+    private fun replyText(app: Application, result: AiToolResult): String {
+        result.notice?.let { notice ->
+            return when (notice.kind) {
+                AiNoticeKind.NOT_FOUND -> app.getString(R.string.ai_target_not_found)
+                AiNoticeKind.AMBIGUOUS -> app.getString(R.string.ai_target_ambiguous, notice.count)
+                AiNoticeKind.TOO_MANY -> app.getString(
+                    R.string.ai_target_too_many,
+                    notice.count,
+                    AiTargetResolver.MAX_CANDIDATES
+                )
+                AiNoticeKind.NO_CHANGE -> app.getString(R.string.ai_target_no_change)
+                AiNoticeKind.NOTHING_TO_DO -> app.getString(R.string.ai_nothing_to_do)
+            }
+        }
+
+        val base = result.text.ifBlank {
+            when (result.card) {
+                // 统计卡片的数字全在卡片里，气泡只需一句「做完了」
+                is ChatCard.Answer -> app.getString(R.string.ai_summary_done)
+                else -> app.getString(R.string.ai_reply_empty)
+            }
+        }
+
+        val needsConfirm = result.card?.pending == true && result.card !is ChatCard.NewEntries
+        return if (needsConfirm) base + "\n\n" + app.getString(R.string.ai_pending_reminder) else base
+    }
+
     // ---------- 确认 / 忽略 ----------
 
     /**
-     * 确认一张待确认卡片：把草稿写进账本。
+     * 确认一张卡片。
      *
-     * 幂等由 [LedgerRepository.confirmDraft] 的原子占位保证（连点两次只会入账一次），
+     * 四种卡片对应四种落库动作；只读的统计卡片没有确认按钮，走到这里直接忽略。
+     * 幂等由 repository 里那几条 `confirm*` 的原子占位保证（连点两次只生效一次），
      * 这里只负责在「已经被处理过」时给出提示，而不是静默成功。
      */
-    fun confirmDraft(message: ChatMessage) {
-        val draft = message.draft ?: return
+    fun confirmCard(message: ChatMessage) {
+        val card = message.card ?: return
+        if (!card.pending) return
+
         viewModelScope.launch {
             val app = getApplication<Application>()
-            val items = draft.map { it.toLedgerItem() }
-            val text = app.getString(R.string.ai_confirmed, describe(draft))
-            if (!repository.confirmDraft(message.id, items, text)) {
-                _hint.value = app.getString(R.string.ai_already_confirmed)
+            val done = when (card) {
+                is ChatCard.NewEntries -> {
+                    val entries = card.entries
+                    repository.confirmDraft(
+                        messageId = message.id,
+                        items = entries.map { it.toLedgerItem() },
+                        confirmedText = app.getString(R.string.ai_confirmed, describe(entries))
+                    )
+                }
+
+                is ChatCard.Modify -> repository.confirmModification(
+                    messageId = message.id,
+                    item = card.after.toLedgerItem(card.before.id),
+                    confirmedText = app.getString(
+                        R.string.ai_modified,
+                        describeModification(card)
+                    )
+                )
+
+                is ChatCard.Remove -> repository.confirmRemoval(
+                    messageId = message.id,
+                    ids = card.entries.map { it.id },
+                    confirmedText = app.getString(R.string.ai_removed, describeRemoval(card))
+                )
+
+                // 只读卡片没有待确认的东西；前面已经挡掉，这里只是让 when 穷尽
+                is ChatCard.Answer -> return@launch
             }
+            if (!done) _hint.value = app.getString(R.string.ai_already_confirmed)
         }
     }
 
-    /** 忽略一张待确认卡片：只清掉草稿，不写账本。 */
-    fun discardDraft(message: ChatMessage) {
-        if (message.draft == null) return
+    /** 忽略一张卡片：只清掉卡片，不碰账本。 */
+    fun discardCard(message: ChatMessage) {
+        val card = message.card ?: return
+        if (!card.pending) return
+
         viewModelScope.launch {
             val app = getApplication<Application>()
-            if (!repository.discardDraft(message.id, app.getString(R.string.ai_discarded))) {
+            val text = when (card) {
+                is ChatCard.NewEntries -> app.getString(R.string.ai_discarded)
+                else -> app.getString(R.string.ai_cancelled)
+            }
+            if (!repository.discardCard(message.id, text)) {
                 _hint.value = app.getString(R.string.ai_already_confirmed)
             }
         }
@@ -185,18 +270,18 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     // ---------- 解析自测 ----------
 
     /**
-     * 跑一遍评估集，统计当前提示词与模型下的解析准确率。
+     * 跑一遍评估集，统计当前提示词与模型下的表现。
      *
      * 为什么做成 App 内的功能而不是一次性脚本：它跑的是**生产同一条管线**
-     * （同一个系统提示词、同一个客户端、同一个解析器），指标才反映线上真实表现。
+     * （同一个系统提示词、同一个客户端、同一个解析器、同一个重试策略），指标才反映线上真实表现。
      * 写脚本必然要复制一份逻辑，那份副本一旦和线上漂移，测出来的准确率就没有意义了。
      *
      * 代价是评估集进了 APK —— 对个人项目可以接受；若将来要上架，应移到 debug 构建里。
      *
-     * @param extended true 跑[扩展集][AiEvalSet.extendedCases]，用于检查主集上的成绩是否过拟合；
-     *   false（默认）跑[主集][AiEvalSet.cases]。两份用例共用同一套评分、重试与展示逻辑。
+     * @param mode 跑哪一份用例：主集（日常回归）、扩展集（过拟合检查）、指令集（多意图路由）。
+     *   三份共用同一套执行与评分代码，只有用例列表与判分口径不同。
      */
-    fun runEval(extended: Boolean = false) {
+    fun runEval(mode: AiEvalMode = AiEvalMode.MAIN) {
         // 防重入：评估要花一两分钟，重复触发会把同一批用例跑两遍、白花两遍钱
         if (_evalRunning.value == true) return
         if (_sending.value == true) return
@@ -207,7 +292,11 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
 
-        val cases = if (extended) AiEvalSet.extendedCases else AiEvalSet.cases
+        val cases = when (mode) {
+            AiEvalMode.MAIN -> AiEvalSet.cases
+            AiEvalMode.EXTENDED -> AiEvalSet.extendedCases
+            AiEvalMode.ACTIONS -> AiEvalSet.actionCases
+        }
         _evalRunning.value = true
         _evalProgress.value = 0 to cases.size
         viewModelScope.launch {
@@ -223,7 +312,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                     // 不会再把进度弹窗弹回来（这正是之前那个「结果出来了还叠着进度弹窗」的成因）
                     _evalProgress.postValue(done to total)
                 }
-                logEvalReport(report, extended)
+                logEvalReport(report, mode)
                 _evalReport.value = report
             } finally {
                 // 顺序要紧：先关掉 running（界面据此收掉进度弹窗），再清进度值。
@@ -244,9 +333,8 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
      * 弹窗只放得下汇总，而「哪几句错了、错成什么样」才是改提示词的依据 —— 那部分必须落到
      * 能复制、能留档的地方，也就是日志。
      */
-    private fun logEvalReport(report: AiEvalReport, extended: Boolean) {
-        val setName = if (extended) "扩展集" else "主集"
-        Log.i(TAG_EVAL, "===== 解析自测汇总（$setName）=====")
+    private fun logEvalReport(report: AiEvalReport, mode: AiEvalMode) {
+        Log.i(TAG_EVAL, "===== 解析自测汇总（${mode.label}）=====")
         report.summaryLines().forEach { Log.i(TAG_EVAL, it) }
         report.results.forEachIndexed { index, result ->
             val mark = if (result.fullyCorrect) "OK" else "NG"
@@ -257,7 +345,10 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 ?.takeIf { result.failure == null }
                 ?.let { " 重试救回（首次:$it）" }
                 .orEmpty()
-            Log.i(TAG_EVAL, "${index + 1}. [$mark] ${result.case.input} → ${result.actualSummary}$failure$retried")
+            Log.i(
+                TAG_EVAL,
+                "${index + 1}. [$mark] ${result.case.input} → ${result.actualSummary}$failure$retried"
+            )
         }
         Log.i(TAG_EVAL, "===== 汇总结束 =====")
     }
@@ -323,15 +414,50 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         categoryIconRes = CategoryColors.iconResFor(categoryName)
     )
 
+    /**
+     * 修改卡片 → 账本条目。**id 取自卡片上的快照**（[ChatCard.Modify.before]），
+     * 不是重新匹配出来的 —— 用户确认的必须是他在卡片上看到的那一笔。
+     */
+    private fun ParsedEntry.toLedgerItem(id: String): LedgerItem = LedgerItem(
+        id = id,
+        amountCents = amountCents,
+        note = note,
+        timeMillis = timeMillis,
+        isExpense = isExpense,
+        categoryName = categoryName,
+        categoryIconRes = CategoryColors.iconResFor(categoryName)
+    )
+
     /** 确认后留在气泡里的摘要，例如「餐饮 -15.00（咖啡）」。 */
     private fun describe(entries: List<ParsedEntry>): String =
         entries.joinToString("、") { entry ->
             val sign = if (entry.isExpense) "-" else "+"
-            val amount = String.format(Locale.getDefault(), "%.2f", entry.amountCents / 100.0)
             buildString {
-                append(entry.categoryName).append(' ').append(sign).append(amount)
+                append(entry.categoryName).append(' ').append(sign)
+                    .append(String.format(Locale.getDefault(), "%.2f", entry.amountCents / 100.0))
                 if (entry.note.isNotEmpty()) append('（').append(entry.note).append('）')
             }
+        }
+
+    /** 修改的摘要：「餐饮 -15.00 → 交通 -30.00」。 */
+    private fun describeModification(card: ChatCard.Modify): String {
+        fun money(cents: Long, isExpense: Boolean): String =
+            (if (isExpense) "-" else "+") +
+                String.format(Locale.getDefault(), "%.2f", cents / 100.0)
+
+        val before = card.before
+        val after = card.after
+        return "${before.categoryName} ${money(before.amountCents, before.isExpense)} → " +
+            "${after.categoryName} ${money(after.amountCents, after.isExpense)}"
+    }
+
+    /** 删除的摘要：一笔时给出细节，多笔时只报数量（列 20 行会撑爆气泡）。 */
+    private fun describeRemoval(card: ChatCard.Remove): String =
+        if (card.entries.size == 1) {
+            val entry = card.entries.first()
+            "${AiSummary.entryLine(entry.toLedgerItem())}"
+        } else {
+            "${card.entries.size} 笔记录"
         }
 
     private fun errorMessageRes(error: AiError): Int = when (error) {

@@ -26,6 +26,7 @@
 /.regerr.txt
 /.re.txt
 /.ro.txt
+/.slidep
 
 # Build outputs
 /build
@@ -34,3 +35,6 @@
 # Artifacts
 *.apk
 *.dm
+
+# 个人求职文档（不属于本仓库）
+/简历项目描述-PersonalLedger.md

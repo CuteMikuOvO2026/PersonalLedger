@@ -64,6 +64,13 @@ data class ReportTotals(
     val entryCount: Int
 )
 
+/** 任意时间区间的收聚合结果，供 AI 助手的统计动作使用（金额单位为“分”）。 */
+data class RangeTotals(
+    val expenseCents: Long,
+    val incomeCents: Long,
+    val entryCount: Int
+)
+
 @Dao
 interface LedgerEntryDao {
 
@@ -305,4 +312,96 @@ interface LedgerEntryDao {
         categoryName: String,
         startMillis: Long?
     ): List<LedgerEntryEntity>
+
+    // ---------- AI 助手的「按条件找账目」（全部下推，不整表读进内存） ----------
+
+    /**
+     * 按选择器粗筛候选记录。
+     *
+     * 条件全部可空 / 可空串：`null` 或空串表示该条件不参与过滤。注意 SQLite 里
+     * `isExpense = NULL` 的结果是 NULL（等价于假），所以方向条件必须写成
+     * `:direction IS NULL OR ...`，否则「只按关键词查」会一笔都查不到。
+     *
+     * `LIMIT` 是必须的：匹配条件写得宽时（比如只给一个「买」字），全表命中没有意义，
+     * 交给上层 [AiTargetResolver] 也只会被截断 —— 不如在 SQL 层就限条数，
+     * 顺带让「命中太多」这件事变成可判断的事实（拿到满额即说明还有更多）。
+     *
+     * @param direction 1=支出，0=收入，null=不限。
+     */
+    @Query(
+        """
+        SELECT * FROM ledger_entries
+        WHERE (:keyword = '' OR note LIKE '%' || :keyword || '%' OR categoryName LIKE '%' || :keyword || '%')
+          AND (:category IS NULL OR categoryName = :category)
+          AND (:direction IS NULL OR isExpense = :direction)
+          AND (:minCents IS NULL OR amountCents >= :minCents)
+          AND (:maxCents IS NULL OR amountCents <= :maxCents)
+          AND (:fromMillis IS NULL OR timeMillis >= :fromMillis)
+          AND (:toMillis IS NULL OR timeMillis <= :toMillis)
+        ORDER BY timeMillis DESC, id ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun searchCandidates(
+        keyword: String,
+        category: String?,
+        direction: Int?,
+        minCents: Long?,
+        maxCents: Long?,
+        fromMillis: Long?,
+        toMillis: Long?,
+        limit: Int
+    ): List<LedgerEntryEntity>
+
+    /** 任意区间的收支合计与笔数，供助手统计动作使用（一次聚合，不读明细）。 */
+    @Query(
+        """
+        SELECT
+            COALESCE(SUM(CASE WHEN isExpense = 1 THEN amountCents ELSE 0 END), 0) AS expenseCents,
+            COALESCE(SUM(CASE WHEN isExpense = 0 THEN amountCents ELSE 0 END), 0) AS incomeCents,
+            COUNT(*) AS entryCount
+        FROM ledger_entries
+        WHERE timeMillis >= :fromMillis AND timeMillis <= :toMillis
+        """
+    )
+    suspend fun sumBetween(fromMillis: Long, toMillis: Long): RangeTotals
+
+    /** 区间内支出最多的前 [limit] 个分类。 */
+    @Query(
+        """
+        SELECT categoryName AS categoryName, SUM(amountCents) AS totalCents
+        FROM ledger_entries
+        WHERE isExpense = 1 AND timeMillis >= :fromMillis AND timeMillis <= :toMillis
+        GROUP BY categoryName
+        ORDER BY totalCents DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun topExpenseCategoriesBetween(
+        fromMillis: Long,
+        toMillis: Long,
+        limit: Int
+    ): List<CategoryTotal>
+
+    /** 区间内金额最大的一笔支出；空区间返回 null。 */
+    @Query(
+        """
+        SELECT * FROM ledger_entries
+        WHERE isExpense = 1 AND timeMillis >= :fromMillis AND timeMillis <= :toMillis
+        ORDER BY amountCents DESC, timeMillis DESC
+        LIMIT 1
+        """
+    )
+    suspend fun largestExpenseBetween(fromMillis: Long, toMillis: Long): LedgerEntryEntity?
+
+    /**
+     * 按主键批量删除，供助手「确认删除」使用。
+     *
+     * 不用 `@Delete` 逐条删：确认卡片上可能是多笔（用户说了「全部」），
+     * 一条 SQL 删完才是原子的语义，也少一次循环。
+     *
+     * @return 实际删除的行数。与消费卡片放在同一个事务里，行数为 0 时调用方要能察觉。
+     */
+    @Query("DELETE FROM ledger_entries WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>): Int
 }

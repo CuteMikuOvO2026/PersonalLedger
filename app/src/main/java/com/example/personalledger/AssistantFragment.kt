@@ -47,8 +47,8 @@ class AssistantFragment : Fragment() {
     private val viewModel: AssistantViewModel by activityViewModels()
 
     private val chatAdapter = ChatAdapter(
-        onConfirm = { viewModel.confirmDraft(it) },
-        onDiscard = { viewModel.discardDraft(it) }
+        onConfirm = { viewModel.confirmCard(it) },
+        onDiscard = { viewModel.discardCard(it) }
     )
 
     /** 评估进行中的进度弹窗；null 表示当前没有在评估。 */
@@ -99,12 +99,17 @@ class AssistantFragment : Fragment() {
                     }
 
                     R.id.action_run_eval -> {
-                        showEvalConfirmDialog(extended = false)
+                        showEvalConfirmDialog(AiEvalMode.MAIN)
                         true
                     }
 
                     R.id.action_run_eval_extended -> {
-                        showEvalConfirmDialog(extended = true)
+                        showEvalConfirmDialog(AiEvalMode.EXTENDED)
+                        true
+                    }
+
+                    R.id.action_run_eval_actions -> {
+                        showEvalConfirmDialog(AiEvalMode.ACTIONS)
                         true
                     }
 
@@ -244,21 +249,35 @@ class AssistantFragment : Fragment() {
     /**
      * 确认后开跑。
      *
-     * @param extended true 跑[扩展集][AiEvalSet.extendedCases]（过拟合检查），
-     *   false 跑[主集][AiEvalSet.cases]。两者共用同一套评分与展示，只有用例列表不同 ——
-     *   它们要回答的是两个不同的问题，但衡量方式必须完全一致，否则结果没法互相印证。
+     * @param mode 跑哪一份用例：主集（日常回归）、扩展集（过拟合检查）、指令集（多意图路由）。
+     *   三者共用同一套评分与展示，只有用例列表与判分口径不同 ——
+     *   它们要回答的是不同的问题，但衡量方式必须一致，否则结果没法互相印证。
      */
-    private fun showEvalConfirmDialog(extended: Boolean) {
+    private fun showEvalConfirmDialog(mode: AiEvalMode) {
         if (!AiSettings.isConfigured(requireContext())) {
             Toast.makeText(requireContext(), R.string.ai_not_configured, Toast.LENGTH_SHORT).show()
             showAiSettingsDialog()
             return
         }
-        val count = if (extended) AiEvalSet.extendedCases.size else AiEvalSet.cases.size
+        val count = when (mode) {
+            AiEvalMode.MAIN -> AiEvalSet.cases.size
+            AiEvalMode.EXTENDED -> AiEvalSet.extendedCases.size
+            AiEvalMode.ACTIONS -> AiEvalSet.actionCases.size
+        }
+        val title = when (mode) {
+            AiEvalMode.MAIN -> R.string.ai_run_eval
+            AiEvalMode.EXTENDED -> R.string.ai_run_eval_extended
+            AiEvalMode.ACTIONS -> R.string.ai_run_eval_actions
+        }
+        val message = if (mode == AiEvalMode.ACTIONS) {
+            getString(R.string.ai_eval_confirm_message_actions, count)
+        } else {
+            getString(R.string.ai_eval_confirm_message, count)
+        }
         AlertDialog.Builder(requireContext())
-            .setTitle(if (extended) R.string.ai_run_eval_extended else R.string.ai_run_eval)
-            .setMessage(getString(R.string.ai_eval_confirm_message, count))
-            .setPositiveButton(R.string.confirm) { _, _ -> viewModel.runEval(extended) }
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton(R.string.confirm) { _, _ -> viewModel.runEval(mode) }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }

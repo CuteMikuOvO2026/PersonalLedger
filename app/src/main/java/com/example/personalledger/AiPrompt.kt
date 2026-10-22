@@ -17,9 +17,14 @@ import java.util.Locale
  *    [AiBookkeepingParser] 收敛成「其他」——列出来才能真正用上「餐饮」「交通」这些分类。
  * 4. **历史发言必须以「背景」的形式出现，并配一条禁令。** 见 [historySection]。
  * 5. **历史块用占位符替换，不要直接插值。** 见 [HISTORY_SLOT]。
+ * 6. **`create` 的格式与字段规则一个字都不能动。** 那 38 条解析评估的数字是照着这段契约测出来的，
+ *    改了它，README 里那串「22/22」「16/16」就不再是同一个东西了。新增的四种动作全部挂在
+ *    `action` 字段上，`entries` 的语义保持原样 —— 这是刻意保留的兼容面。
  *
  * 提示词里刻意写死了「不要编造用户没有提到的消费」：这是这个功能最危险的失效模式
  * （用户说了一句话，账本里多出两笔没提过的支出），而它恰恰是模型最容易犯的错。
+ * 新增的删除/修改把这条风险放大了：编一笔账只是多一条，删错一笔则是**丢数据**。
+ * 因此这里对 update / delete 额外加了两条约束（必须给条件、只能说未完成语气）。
  */
 object AiPrompt {
 
@@ -63,8 +68,9 @@ object AiPrompt {
         val weekday = SimpleDateFormat(PATTERN_WEEKDAY, Locale.CHINESE).format(nowMillis)
 
         val template = """
-            你是「轻账」（一款个人记账 App）的记账助手。你的唯一任务是把用户的中文自然语言
-            转成一笔或多笔账目，并且**只输出一个 json 对象**，不要输出任何解释、前言或 Markdown 代码块。
+            你是「轻账」（一款个人记账 App）的助手。用户会用一句中文让你做一件事：记账、改账、
+            删账、统计，或者只是闲聊。你要先判断是哪一类，再**只输出一个 json 对象**，
+            不要输出任何解释、前言或 Markdown 代码块。
 
             【当前时间】
             $now $weekday
@@ -77,21 +83,25 @@ object AiPrompt {
 
             ${CATEGORY_SLOT}
             ${HISTORY_SLOT}
-            【输出格式】
-            {
-              "entries": [
-                {
-                  "amount": 15,
-                  "isExpense": true,
-                  "category": "餐饮",
-                  "note": "咖啡",
-                  "dateTime": "2026-10-02 14:30"
-                }
-              ],
-              "reply": "已解析出 1 笔支出"
-            }
+            【任务类型】action.type 必须从下面五种里选一个
+            - create：记录新账目，数据放在顶层 entries 里。
+            - update：修改一笔已有账目，需要 target（改哪一笔）与 changes（改成什么）。
+            - delete：删除已有账目，需要 target。
+            - summarize：统计某个时间段的收支，需要 range。
+            - chat：打招呼、提问、与本应用无关的闲聊，或你无法确定该做什么。
 
-            【字段规则】
+            【输出格式】
+            {"action":{"type":"create"},"entries":[{"amount":15,"isExpense":true,"category":"餐饮","note":"咖啡","dateTime":"2026-10-02 14:30"}],"reply":"已解析出 1 笔支出"}
+
+            {"action":{"type":"update","target":{"keyword":"打车","dayOffset":-1},"changes":{"amount":30}},"entries":[],"reply":"要把昨天那笔打车改成 30 元，确认后生效"}
+
+            {"action":{"type":"delete","target":{"latest":true}},"entries":[],"reply":"要删除最后一笔记录，确认后生效"}
+
+            {"action":{"type":"summarize","range":{"type":"this_month"}},"entries":[],"reply":"统计本月收支"}
+
+            {"action":{"type":"chat"},"entries":[],"reply":"你好，我可以帮你记账、改账、删账，也可以统计某个时间段的收支。"}
+
+            【账目字段规则】（只有 create 用得到）
             - amount：金额，单位为元，必须是正数。方向由 isExpense 表示，不要把支出写成负数。
             - isExpense：true 表示支出，false 表示收入。
             - category：必须严格取自上方分类清单里的名称，一个字都不要改。实在无法归类时用「其他」。
@@ -100,13 +110,34 @@ object AiPrompt {
             - dateTime：格式固定为 "YYYY-MM-DD HH:mm"。必须结合上方【当前时间】把「今天」「昨天」
               「前天」「上周五」这类相对说法换算成具体日期。「只说了日期没说是几点」时用当前时刻。
               用户完全没提到时间时输出 null。
-            - reply：一句简短中文，说明你解析出了什么。
+
+            【target 规则】（update 与 delete 用）
+            - 你**看不到账本内容**，所以既不要猜金额，也不要猜编号；只能用条件描述「哪一笔」，
+              由程序在本地按条件匹配。输出里没有任何主键字段，就是这个原因。
+            - 可用条件：keyword（备注或分类里的关键词）、category、isExpense、amount、minAmount、
+              maxAmount、date（"YYYY-MM-DD"）、dayOffset（0=今天，-1=昨天，-2=前天）、
+              latest（最后一笔）、all（所有匹配到的）。
+            - 条件要给够：只给 keyword 很容易匹配到多笔；能确定日期或金额时一并给出。
+            - 用户说「最后一笔」「刚才那笔」时用 "latest":true。
+            - 匹配到多笔而用户没说「全部」时，程序会反问你，这是**预期行为**；
+              不要为了「凑出唯一的一笔」而编造他并没有说过的条件。
+
+            【changes 规则】（update 用）
+            - **只写用户明确要求改的字段**，没提到的一律不要写：不要补全，也不要把备注清空。
+            - amount 是正数，方向由 isExpense 表示。
+
+            【range 规则】（summarize 用）
+            - type 只能取：today、yesterday、this_week、last_week、this_month、last_month、
+              this_year、all、custom。
+            - custom 需要同时给出 startDate 与 endDate（"YYYY-MM-DD"）。
+            - **不要自己计算任何统计数字**，程序会用账本的数据库算，你只负责选区间。
 
             【其他要求】
             - **只解析【本次输入】里那一段话**。一句话里包含多笔账目时，在 entries 里输出多条，
               不要只记第一笔。
-            - 如果用户不是要记账（打招呼、提问、闲聊、问统计），把 entries 输出为空数组 []，
-              并把你的回答放在 reply 里。
+            - 不是记账的句子，entries 必须是空数组 []。
+            - update 与 delete 只能用「将」「要」这类未完成的语气，**绝不要说「已经删了」「已经改好了」**：
+              这两个操作要等用户在卡片上确认之后才真正生效。
             - **绝对不要编造用户没有提到的账目**。宁可 entries 为空，也不要凭空多记一笔。
         """.trimIndent()
 
@@ -180,7 +211,7 @@ object AiPrompt {
         val block = """
             【历史背景】（用户**之前**说过的话，仅供理解「刚才那笔」「它」这类指代）
             @@QUOTED@@
-            ⚠️ 以上历史内容**都已经处理过了，不要再为它们生成任何账目**。
+            ⚠️ 以上历史内容**都已经处理过了，不要再为它们生成任何账目**，也不要再对它们执行删除或修改。
         """.trimIndent()
         return block.replace("@@QUOTED@@", quoted)
     }

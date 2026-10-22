@@ -18,4 +18,8 @@
         android:id="@+id/action_run_eval_extended"
         android:title="@string/ai_run_eval_extended"
         app:showAsAction="never" />
+    <item
+        android:id="@+id/action_run_eval_actions"
+        android:title="@string/ai_run_eval_actions"
+        app:showAsAction="never" />
 </menu>

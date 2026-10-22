@@ -27,7 +27,7 @@ android {
         // 系统不校验 versionCode，因此版本一律由 versionName 与 git tag 标识。
         // 将来若要上架，再从这里开始逐次递增。
         versionCode = 1
-        versionName = "2.5.1"
+        versionName = "2.5.2"
     }
 
     buildTypes {

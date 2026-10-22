@@ -25,10 +25,31 @@ data class AiEvalExpectation(
 /** 一条评估用例：一句输入 + 期望解析出的账目（空列表表示期望「不记账」）。 */
 data class AiEvalCase(
     val input: String,
-    val expect: List<AiEvalExpectation>
+    val expect: List<AiEvalExpectation> = emptyList(),
+    /**
+     * 期望的动作类型（[AiAction.type]）。null 表示**不校验动作**，只看账目字段 ——
+     * 主集与扩展集都是 null，因此加了这个字段之后，那 38 条用例的判分口径一个字都没变，
+     * 历史数字仍然可比。
+     *
+     * 只有 [AiEvalSet.actionCases] 会填它：那份用例测的是「这句话该干什么」，
+     * 不测金额分类（那由主集负责）。
+     */
+    val expectAction: String? = null
 ) {
     /** 打招呼、问统计这类语句，期望不产生任何账目。 */
     val expectsNoEntry: Boolean get() = expect.isEmpty()
+}
+
+/** 跑哪一份评估集。三份共用同一套执行与评分代码，只有用例与判分口径不同。 */
+enum class AiEvalMode(val label: String) {
+    /** 主集：日常回归，看解析准确率。 */
+    MAIN("主集"),
+
+    /** 扩展集：过拟合检查。 */
+    EXTENDED("扩展集"),
+
+    /** 指令集：多意图路由是否判对。 */
+    ACTIONS("指令集")
 }
 
 /**
@@ -192,5 +213,57 @@ object AiEvalSet {
         // ---------- 反幻觉：换两句没测过的说法 ----------
         AiEvalCase("谢谢", emptyList()),
         AiEvalCase("帮我看看这个月餐饮花了多少", emptyList())
+    )
+
+    // ==================================================================================
+    // 指令集（[actionCases]）：助手能改账 / 删账 / 统计之后，必须能测「这句话该干什么」
+    // ==================================================================================
+
+    /**
+     * 指令集 —— 与前两份**刻意分开**，判分口径完全不同。
+     *
+     * 主集测的是「这句话解析成了哪几笔账」，这一份测的是「这句话**该做哪件事**」。
+     * 混在一起会让两个指标互相污染：一句「把昨天打车改成 30」在解析视角下 entries 为空
+     * （本该如此，它不该记账），若拿主集的口径去判，它会被记成一次「漏记」。
+     *
+     * **它覆盖不到什么（必须说清楚）**：这里只判动作类型，判不了「找到的是不是对的那一笔」——
+     * 目标匹配要走本地数据库（[AiTargetResolver]），而评估跑在真实账本上会让指标随设备漂移。
+     * 匹配逻辑由 JVM 单测覆盖（`AiTargetResolverTest`），两者分工明确：
+     * 模型负责「听懂要干什么」，代码负责「找到那一笔」，各自测各自的部分。
+     *
+     * 用例设计刻意包含三类容易混的边界：
+     * 1. **改账 vs 记账**：「把打车改成 30」里没有新账目，模型很容易顺手记一笔 30；
+     * 2. **统计 vs 记账**：「这个月餐饮花了多少」只是问，不该产生任何记录；
+     * 3. **闲聊 vs 动作**：「谢谢」不该触发任何动作。
+     *
+     * 写进评估集的句子都是**没有歧义**的：像「把那个改一下」这种指代不明的句子是噪音，
+     * 不是难度 —— 它在真实对话里靠历史背景才能消解，而评估集刻意不带历史（见 [AiEvalRunner]）。
+     */
+    val actionCases: List<AiEvalCase> = listOf(
+        // ---------- update：改已有的那一笔，不能顺手记新的 ----------
+        AiEvalCase("把昨天打车那笔改成 30", expectAction = AiAction.TYPE_UPDATE),
+        AiEvalCase("把超市那笔的金额改成 70", expectAction = AiAction.TYPE_UPDATE),
+        AiEvalCase("那笔 45 的电影票改成 40", expectAction = AiAction.TYPE_UPDATE),
+        AiEvalCase("昨天的咖啡记错分类了，应该是购物", expectAction = AiAction.TYPE_UPDATE),
+
+        // ---------- delete ----------
+        AiEvalCase("删掉最后一笔", expectAction = AiAction.TYPE_DELETE),
+        AiEvalCase("帮我把今天所有的记录都删掉", expectAction = AiAction.TYPE_DELETE),
+        AiEvalCase("把昨天那条打车的记录删了", expectAction = AiAction.TYPE_DELETE),
+
+        // ---------- summarize：只问不记 ----------
+        AiEvalCase("这个月餐饮花了多少", expectAction = AiAction.TYPE_SUMMARIZE),
+        AiEvalCase("总结一下上个月的开支", expectAction = AiAction.TYPE_SUMMARIZE),
+        AiEvalCase("上个月我收入多少", expectAction = AiAction.TYPE_SUMMARIZE),
+        AiEvalCase("今天花了多少", expectAction = AiAction.TYPE_SUMMARIZE),
+
+        // ---------- create：一句正常的记账不能被新动作抢走 ----------
+        AiEvalCase("我昨天买了咖啡 15", expectAction = AiAction.TYPE_CREATE),
+        AiEvalCase("地铁 6 块", expectAction = AiAction.TYPE_CREATE),
+
+        // ---------- chat：不该触发任何动作 ----------
+        AiEvalCase("你好", expectAction = AiAction.TYPE_CHAT),
+        AiEvalCase("谢谢", expectAction = AiAction.TYPE_CHAT),
+        AiEvalCase("你能做什么", expectAction = AiAction.TYPE_CHAT)
     )
 }

@@ -14,17 +14,18 @@ enum class ChatRole(val value: String) {
 /**
  * 界面上的一条对话消息。
  *
- * [draft] 非空表示这条助手消息带了一张**待确认的账目卡片**——它同时是「有没有待确认事项」
- * 的唯一判据，因此不需要再单独存一个状态字段（见 [ChatMessageEntity.draftJson]）。
- * 用户确认或忽略之后，该消息会被改写为普通文本，[draft] 随之变成 null。
+ * [card] 非空表示这条助手消息挂了一张卡片 —— 可能是**待确认**的账目 / 修改 / 删除，
+ * 也可能是**只读**的统计结果（见 [ChatCard.pending]）。它同时是「还有没有待办」的唯一判据，
+ * 因此不需要再单独存一个状态字段（见 [ChatMessageEntity.draftJson]）。
+ * 用户确认或忽略之后，该消息会被改写为普通文本，[card] 随之变成 null。
  */
 data class ChatMessage(
     val id: Long = 0L,
     val role: ChatRole,
     val content: String,
     val createdAt: Long,
-    val draft: List<ParsedEntry>? = null
+    val card: ChatCard? = null
 ) {
-    /** 是否需要在气泡里渲染确认卡片。 */
-    val hasDraft: Boolean get() = !draft.isNullOrEmpty()
+    /** 是否需要在气泡里渲染「确认 / 忽略」按钮。只读的统计卡片不显示按钮。 */
+    val hasPendingCard: Boolean get() = card?.pending == true
 }

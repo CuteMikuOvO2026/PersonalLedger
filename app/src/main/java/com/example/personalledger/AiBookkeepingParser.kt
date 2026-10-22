@@ -22,10 +22,18 @@ data class ParsedEntry(
     val note: String
 )
 
-/** 模型回复的解析结果：[entries] 为空表示这句话里没有账目（纯对话），[reply] 是要展示的助手回复。 */
+/**
+ * 模型回复的解析结果。
+ *
+ * @param entries 新建的账目。**为空**表示这句话不是记账（可能是修改、删除、统计、闲聊）。
+ * @param reply 要展示给用户的助手回复。
+ * @param action 这句话要做的事。解析不出来时为 null，调用方按「[entries] 非空即新建、否则纯对话」
+ *   兜底 —— 模型偶尔会漏掉 `action` 字段，那不该让一句原本正常的记账失败。
+ */
 data class AiReply(
     val entries: List<ParsedEntry>,
-    val reply: String
+    val reply: String,
+    val action: AiAction? = null
 )
 
 /**
@@ -50,8 +58,13 @@ object AiBookkeepingParser {
 
     private const val MIN_AMOUNT_CENTS = 1L
 
-    /** 金额上限（100 万元）。挡的是模型把「15」写成「150000000」这类离谱幻觉。 */
-    private const val MAX_AMOUNT_CENTS = 100_000_000L
+    /**
+     * 金额上限（100 万元）。挡的是模型把「15」写成「150000000」这类离谱幻觉。
+     *
+     * 改成 `internal` 是为了让 [toCentsOrNull]（修改金额、目标金额也走它）与新建共用同一个上限：
+     * 两处各写一个数字，早晚会漂移，而漂移的后果是「新建时 150 万被拒、修改时却写进了账本」。
+     */
+    internal const val MAX_AMOUNT_CENTS = 100_000_000L
 
     /** 解析出的年份合理区间，挡掉模型给出 1970 / 2099 之类的日期。 */
     private const val MIN_YEAR = 2000
@@ -71,7 +84,49 @@ object AiBookkeepingParser {
      */
     private data class RawReply(
         val entries: List<RawEntry>?,
-        val reply: String?
+        val reply: String?,
+        val action: RawAction?
+    )
+
+    /**
+     * `action` 的原始结构。同样是「每个字段都可空」—— Gson 不执行构造器，
+     * 模型少给一个字段就是 null，这里必须自己判。
+     */
+    private data class RawAction(
+        val type: String?,
+        val target: RawTarget?,
+        val changes: RawChanges?,
+        val range: RawRange?
+    )
+
+    /** `target`：「操作哪一笔」。 */
+    private data class RawTarget(
+        val latest: Boolean?,
+        val all: Boolean?,
+        val date: String?,
+        val dayOffset: Int?,
+        val keyword: String?,
+        val category: String?,
+        val isExpense: Boolean?,
+        val amount: Double?,
+        val minAmount: Double?,
+        val maxAmount: Double?
+    )
+
+    /** `changes`：只带用户明确要求改的字段。 */
+    private data class RawChanges(
+        val amount: Double?,
+        val isExpense: Boolean?,
+        val category: String?,
+        val note: String?,
+        val dateTime: String?
+    )
+
+    /** `range`：统计区间。 */
+    private data class RawRange(
+        val type: String?,
+        val startDate: String?,
+        val endDate: String?
     )
 
     private data class RawEntry(
@@ -117,7 +172,96 @@ object AiBookkeepingParser {
 
         val entries = raw.entries.orEmpty().mapNotNull { toEntry(it, allowedCategories, nowMillis) }
         val reply = raw.reply?.replace(WHITESPACE, " ")?.trim().orEmpty()
-        return AiReply(entries = entries, reply = reply)
+        return AiReply(
+            entries = entries,
+            reply = reply,
+            action = toAction(raw.action, entries, allowedCategories)
+        )
+    }
+
+    /**
+     * 把模型给的动作归一化成 [AiAction]。
+     *
+     * **任何不完整 / 不合法的动作都收敛成 [AiAction.Chat]（什么都不做），绝不「尽力执行」。**
+     * 这个方向是刻意选的：少做一次的代价是用户再问一遍；做错一次的代价是账本被改坏或删掉，
+     * 而账本里的一笔错账用户很难事后发现（与 [toEntry] 的「宁可少记，不可错记」同一条原则）。
+     *
+     * 缺 `action` 字段时按历史行为兜底：有 entries 就是新建，没有就是闲聊。
+     */
+    private fun toAction(
+        raw: RawAction?,
+        entries: List<ParsedEntry>,
+        allowedCategories: Set<String>
+    ): AiAction {
+        val type = AiAction.normalizeType(raw?.type)
+            ?: if (entries.isNotEmpty()) AiAction.TYPE_CREATE else AiAction.TYPE_CHAT
+
+        return when (type) {
+            AiAction.TYPE_CREATE ->
+                if (entries.isEmpty()) AiAction.Chat else AiAction.Create
+
+            AiAction.TYPE_UPDATE -> {
+                val target = raw?.target?.toTargetSpec()
+                val changes = raw?.changes?.toChanges(allowedCategories)
+                // 没有定位条件就不知道改哪一笔；没有有效改动就没什么可改 —— 两者都只能是闲聊
+                if (target == null || !target.hasCondition || changes == null) {
+                    AiAction.Chat
+                } else {
+                    AiAction.Update(target, changes)
+                }
+            }
+
+            AiAction.TYPE_DELETE -> {
+                val target = raw?.target?.toTargetSpec()
+                // 空 target 绝不能当成「删除全部」：那正是最危险的误删。
+                if (target == null || !target.hasCondition) AiAction.Chat else AiAction.Delete(target)
+            }
+
+            AiAction.TYPE_SUMMARIZE -> AiAction.Summarize(
+                AiRangeSpec(
+                    type = AiRangeType.fromWire(raw?.range?.type),
+                    startDate = raw?.range?.startDate?.trim()?.takeIf { it.isNotEmpty() },
+                    endDate = raw?.range?.endDate?.trim()?.takeIf { it.isNotEmpty() }
+                )
+            )
+
+            else -> AiAction.Chat
+        }
+    }
+
+    private fun RawTarget.toTargetSpec(): AiTargetSpec = AiTargetSpec(
+        latest = latest == true,
+        all = all == true,
+        date = date?.trim()?.takeIf { it.isNotEmpty() },
+        // 偏移量给个合理范围：模型偶尔会把「昨天」写成 -1 以外的离谱值，
+        // 超出十年的偏移一定是幻觉，直接忽略（不参与过滤）比按它去查更有用
+        dayOffset = dayOffset?.takeIf { it in -3650..3650 },
+        keyword = keyword?.replace(WHITESPACE, " ")?.trim()?.takeIf { it.isNotEmpty() },
+        category = category?.trim()?.takeIf { it.isNotEmpty() },
+        isExpense = isExpense,
+        amountYuan = amount,
+        minAmountYuan = minAmount,
+        maxAmountYuan = maxAmount
+    )
+
+    /**
+     * 改动的校验：**只保留合法且有意义的字段**，一个都不剩就返回 null（整条动作降级为闲聊）。
+     *
+     * 分类名单独处理：清单外的名字**丢掉这个改动**，而不是像新建那样收敛成「其他」。
+     * 新建时收敛是兜底（总得有个分类），修改时收敛是篡改（用户没说要改成「其他」）。
+     */
+    private fun RawChanges.toChanges(allowedCategories: Set<String>): AiChanges? {
+        val amountYuan = amount?.takeIf { it.toCentsOrNull() != null }
+        val categoryName = category?.trim()
+            ?.takeIf { it.isNotEmpty() && it in allowedCategories }
+        val changes = AiChanges(
+            amountYuan = amountYuan,
+            isExpense = isExpense,
+            category = categoryName,
+            note = note?.replace(WHITESPACE, " ")?.trim()?.takeIf { it.isNotEmpty() },
+            dateTime = dateTime?.trim()?.takeIf { it.isNotEmpty() }
+        )
+        return changes.takeIf { it.hasChange }
     }
 
     /** 单笔账目的校验与换算；任何一项不合格返回 `null` 表示丢弃这一笔。 */

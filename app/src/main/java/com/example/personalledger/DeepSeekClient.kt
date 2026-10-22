@@ -104,10 +104,15 @@ object DeepSeekClient {
     private const val READ_TIMEOUT_MS = 30_000
 
     /**
-     * 输出上限。记账结果是很短的 JSON，800 足够；同时也兜住「模型跑飞了长篇大论」的情况。
-     * 给得太小则 JSON 会被截断（`finish_reason = length`），所以不能压到 100 这种量级。
+     * 输出上限。
+     *
+     * 从 800 提到 1200：助手支持改账 / 删账 / 统计之后，输出里多了 `action` 与 `target` /
+     * `changes` / `range` 这些字段，一条「修改 + 长备注」的回复贴近 800 时会撞上
+     * `finish_reason = length`，而截断的 JSON 必然解析失败（[AiError.TRUNCATED]）。
+     *
+     * 仍不能给得太大：这个上限同时也是「模型跑飞了长篇大论」的兜底。
      */
-    private const val MAX_TOKENS = 800
+    private const val MAX_TOKENS = 1200
 
     /** 记账是抽取任务不是创作任务，低温度让同一句话的结果更稳定。 */
     private const val TEMPERATURE = 0.2

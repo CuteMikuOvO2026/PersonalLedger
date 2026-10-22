@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,9 +19,12 @@ import kotlin.math.roundToLong
 /**
  * 数据仓库：账本条目与预算规则走 Room，自定义分类 / 自动记账开关 / 主题模式走 DataStore。
  * 负责实体映射、旧存储的一次性搬迁（DataStore JSON 历史 → Room；旧月度总预算 → budgets 表）、
- * 备份还原，以及 AI 助手的对话与待确认草稿。
+ * 备份还原，以及 AI 助手的对话与卡片。
+ *
+ * 同时实现 [AiLedgerGateway]：助手「按条件找账目 / 统计」所需的数据访问都在这里，
+ * 条件全部下推到 SQL（见 [LedgerEntryDao.searchCandidates]），不把整表读进内存。
  */
-class LedgerRepository(context: Context) {
+class LedgerRepository(context: Context) : AiLedgerGateway {
 
     private val db = AppDatabase.get(context)
     private val dao = db.ledgerEntryDao()
@@ -32,9 +34,6 @@ class LedgerRepository(context: Context) {
     private val gson: Gson = GsonBuilder()
         .registerTypeAdapter(LedgerItem::class.java, LedgerItemJsonAdapter())
         .create()
-
-    /** 待确认草稿（[ParsedEntry] 列表）的 Gson 类型，供 [ChatMessageEntity.draftJson] 往返。 */
-    private val draftType = object : TypeToken<List<ParsedEntry>>() {}.type
 
     private val migrateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -288,28 +287,28 @@ class LedgerRepository(context: Context) {
 
     // ---------- AI 助手对话 ----------
 
-    /** 追加一条对话消息；[draft] 非空表示这条助手消息带一张待确认的账目卡片。 */
+    /** 追加一条对话消息；[card] 非空表示这条助手消息挂一张卡片（待确认的，或只读的统计结果）。 */
     suspend fun appendChatMessage(
         role: ChatRole,
         content: String,
-        draft: List<ParsedEntry>? = null
+        card: ChatCard? = null
     ): Long = chatDao.insert(
         ChatMessageEntity(
             role = role.value,
             content = content,
             createdAt = System.currentTimeMillis(),
-            draftJson = encodeDraft(draft)
+            draftJson = ChatCardCodec.encode(card)
         )
     )
 
     /**
-     * 确认待确认的账目：**占用草稿与写入账目必须在同一个事务里**。
+     * 确认一张「新建账目」卡片：**占用卡片与写入账目必须在同一个事务里**。
      *
      * 顺序不能反：先写入再占位的话，两次并发点击会各自写入一遍，账本里就多出一笔。
      * 反过来先占位（`consumeDraft` 带 `draftJson IS NOT NULL` 条件）则天然是原子的——
      * 只有拿到 1 行受影响的那一次调用才会往下写账目，另一次直接返回 `false`。
      *
-     * @return `false` 表示这笔已经被处理过（或消息不存在），调用方据此提示而不是静默成功。
+     * @return `false` 表示这张卡片已经被处理过（或消息不存在），调用方据此提示而不是静默成功。
      */
     suspend fun confirmDraft(
         messageId: Long,
@@ -323,8 +322,41 @@ class LedgerRepository(context: Context) {
         true
     }
 
-    /** 忽略一张待确认卡片。与 [confirmDraft] 一样靠 [ChatMessageDao.consumeDraft] 的原子占位去重。 */
-    suspend fun discardDraft(messageId: Long, discardedText: String): Boolean =
+    /**
+     * 确认一张「修改」卡片：占位与写入同一事务，语义与 [confirmDraft] 完全一致。
+     *
+     * [item] 的 id 来自卡片上的快照（[EntryRef.id]），不是确认时重新匹配出来的 —— 详见 [EntryRef]。
+     * 如果这条记录在用户确认前已被别处删掉，`upsert` 会把它**重新插回去**（REPLACE 语义）。
+     * 这是刻意接受的取舍：用户的意图是「把这一笔改成这样」，把它改回来比默默失败更符合预期。
+     */
+    suspend fun confirmModification(
+        messageId: Long,
+        item: LedgerItem,
+        confirmedText: String
+    ): Boolean = db.withTransaction {
+        if (chatDao.consumeDraft(messageId, confirmedText) == 0) return@withTransaction false
+        dao.upsert(LedgerItemMappers.itemToEntity(item))
+        true
+    }
+
+    /**
+     * 确认一张「删除」卡片：占位与删除同一事务。
+     *
+     * 删除按主键批量执行（[LedgerEntryDao.deleteByIds]）：卡片上列了几笔就只删那几笔，
+     * 不会因为「确认时又匹配了一遍」而误伤新出现的记录。
+     */
+    suspend fun confirmRemoval(
+        messageId: Long,
+        ids: List<String>,
+        confirmedText: String
+    ): Boolean = db.withTransaction {
+        if (chatDao.consumeDraft(messageId, confirmedText) == 0) return@withTransaction false
+        if (ids.isNotEmpty()) dao.deleteByIds(ids)
+        true
+    }
+
+    /** 忽略一张卡片。与确认一样靠 [ChatMessageDao.consumeDraft] 的原子占位去重。 */
+    suspend fun discardCard(messageId: Long, discardedText: String): Boolean =
         chatDao.consumeDraft(messageId, discardedText) > 0
 
     suspend fun clearChat() = chatDao.deleteAll()
@@ -334,27 +366,79 @@ class LedgerRepository(context: Context) {
         role = ChatRole.from(role),
         content = content,
         createdAt = createdAt,
-        draft = decodeDraft(draftJson)
+        // 解码失败时退化成一条普通文本消息，而不是抛异常：一段坏掉的 JSON 不该让整个助手页面
+        // 打不开，最坏的结果应该是「卡片没了，但那条回复还在」（与 DataStore 那套取舍一致）。
+        card = ChatCardCodec.decode(draftJson)
     )
 
-    /**
-     * 草稿解码失败时返回 `null`（退化成一条普通文本消息）而不是抛异常。
-     *
-     * 这与 [DataStoreManager.customCategoriesFlow] 的取舍一致：一段坏掉的 JSON 不该让整个
-     * 助手页面打不开，最坏的结果应该是「确认卡片没了，但那条回复还在」。
-     */
-    private fun decodeDraft(json: String?): List<ParsedEntry>? {
-        if (json.isNullOrEmpty()) return null
-        return try {
-            gson.fromJson<List<ParsedEntry>>(json, draftType)?.takeIf { it.isNotEmpty() }
-        } catch (e: Exception) {
-            Log.e("LedgerRepository", "草稿解析失败，按普通消息处理", e)
-            null
-        }
+    // ---------- AiLedgerGateway：助手执行动作所需的数据访问 ----------
+
+    override suspend fun candidates(spec: AiTargetSpec, nowMillis: Long): List<LedgerItem> {
+        val window = searchWindow(spec, nowMillis)
+        val exactCents = spec.amountYuan?.toCentsOrNull()
+        return dao.searchCandidates(
+            // LIKE 的通配符必须去掉：用户说「50% 折扣」时，`%` 会让条件匹配到所有记录，
+            // 于是「改 50% 那笔」变成「改任意一笔」。宁可搜不到，也不要放大匹配范围。
+            keyword = spec.keyword.orEmpty().trim().replace("%", "").replace("_", ""),
+            category = spec.category?.trim()?.takeIf { it.isNotEmpty() },
+            direction = spec.isExpense?.let { if (it) 1 else 0 },
+            minCents = spec.minAmountYuan?.toCentsOrNull() ?: exactCents,
+            maxCents = spec.maxAmountYuan?.toCentsOrNull() ?: exactCents,
+            fromMillis = window?.first,
+            toMillis = window?.second,
+            limit = CANDIDATE_LIMIT
+        ).map { LedgerItemMappers.entityToItem(it) }
     }
 
-    private fun encodeDraft(draft: List<ParsedEntry>?): String? =
-        if (draft.isNullOrEmpty()) null else gson.toJson(draft, draftType)
+    override suspend fun totals(range: PeriodRange): AiSummary.Totals {
+        val row = dao.sumBetween(range.startMillis, range.endMillis)
+        return AiSummary.Totals(
+            expenseCents = row.expenseCents,
+            incomeCents = row.incomeCents,
+            count = row.entryCount
+        )
+    }
+
+    override suspend fun topExpenseCategories(
+        range: PeriodRange,
+        limit: Int
+    ): List<CategoryTotal> =
+        dao.topExpenseCategoriesBetween(range.startMillis, range.endMillis, limit)
+
+    override suspend fun largestExpense(range: PeriodRange): LedgerItem? =
+        dao.largestExpenseBetween(range.startMillis, range.endMillis)
+            ?.let { LedgerItemMappers.entityToItem(it) }
+
+    /**
+     * 把选择器里的「日期」条件换算成 SQL 能用的时间窗（整天，两端包含）。
+     *
+     * 没有日期条件时返回 null，表示不限时间 —— 此时由关键词 / 分类 / 金额负责收窄，
+     * 再由 [AiTargetResolver] 在内存里按天偏移复核。这里多算一次的意义是**少读几行**：
+     * 说了「昨天」就不该把三年前的记录也捞回来。
+     */
+    private fun searchWindow(spec: AiTargetSpec, nowMillis: Long): Pair<Long, Long>? {
+        val dayStart = when {
+            spec.dayOffset != null -> shiftDay(LedgerStats.startOfDay(nowMillis), spec.dayOffset)
+
+            !spec.date.isNullOrBlank() ->
+                shiftDay(
+                    LedgerStats.startOfDay(
+                        AiBookkeepingParser.parseDateTime(spec.date, nowMillis)
+                    ),
+                    0
+                )
+
+            else -> return null
+        }
+        return dayStart to (shiftDay(dayStart, 1) - 1)
+    }
+
+    /** 以某个「某日零点」为锚点平移整天（用 Calendar 而不是毫秒加减，避免夏令时错一天）。 */
+    private fun shiftDay(dayStartMillis: Long, days: Int): Long =
+        java.util.Calendar.getInstance().apply {
+            timeInMillis = dayStartMillis
+            add(java.util.Calendar.DAY_OF_MONTH, days)
+        }.timeInMillis
 
     suspend fun resetAll() {
         dao.deleteAll()
@@ -461,5 +545,14 @@ class LedgerRepository(context: Context) {
          * v3：预算升级为结构化规则列表（含分类预算与月 / 周周期）
          */
         const val CURRENT_BACKUP_VERSION = 3
+
+        /**
+         * 助手「找哪一笔」时一次最多取多少条候选。
+         *
+         * 定成 100 而不是 20（[AiTargetResolver.MAX_CANDIDATES] 才是展示上限）：
+         * 取满 100 条这件事本身说明「条件太宽」，而卡片上要能反映「还有更多」，
+         * 不能因为只读了 20 条就告诉用户「就这些」。
+         */
+        private const val CANDIDATE_LIMIT = 100
     }
 }

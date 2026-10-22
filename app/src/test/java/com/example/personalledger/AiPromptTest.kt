@@ -157,6 +157,59 @@ class AiPromptTest {
         assertTrue("非记账语句要能返回空数组", text.contains("[]"))
     }
 
+    // ---------- 多意图：动作协议 ----------
+
+    @Test
+    fun `提示词必须列出五种任务类型`() {
+        val text = prompt()
+
+        listOf("create", "update", "delete", "summarize", "chat").forEach {
+            assertTrue("缺少任务类型 $it", text.contains(it))
+        }
+    }
+
+    @Test
+    fun `必须说清模型看不到账本只能用条件定位`() {
+        // 这是「不让模型编主键」的提示词侧配套：模型一旦以为自己能看到账本，
+        // 就会开始编金额、编编号，而它编出来的东西是没法验证的。
+        val text = prompt()
+
+        assertTrue(text.contains("看不到账本"))
+        assertTrue("缺少 keyword 条件说明", text.contains("keyword"))
+        assertTrue("缺少 latest 条件说明", text.contains("latest"))
+        assertTrue("缺少 dayOffset 条件说明", text.contains("dayOffset"))
+        assertTrue("缺少 all 条件说明", text.contains("all"))
+    }
+
+    @Test
+    fun `必须禁止模型自己算统计数字`() {
+        // 统计的数字一旦由模型加出来，加错也不会有人发现：卡片上看起来完全正常
+        assertTrue(prompt().contains("不要自己计算任何统计数字"))
+    }
+
+    @Test
+    fun `改删必须要求未完成的语气`() {
+        // 模型若写「已删除」，用户会以为已经生效，而卡片上还挂着确认按钮
+        val text = prompt()
+
+        assertTrue(text.contains("绝不要说「已经删了」"))
+    }
+
+    @Test
+    fun `动作示例里不得出现清单外的分类名`() {
+        val text = prompt(expenseCategories = listOf("餐饮", "其他"), incomeCategories = listOf("工资"))
+
+        assertFalse("示例里的分类必须在清单内", text.contains("\"category\":\"交通\""))
+    }
+
+    @Test
+    fun `历史禁令同时覆盖删除与修改`() {
+        // 历史里那句「删掉咖啡那笔」如果被重新执行一次，用户会莫名其妙少一笔账
+        val text = prompt(history = listOf("删掉咖啡那笔"))
+
+        assertTrue(text.contains("也不要再对它们执行删除或修改"))
+    }
+
     private companion object {
         /** 固定「现在」，让日期锚点可断言。对应 2025-10-02（星期四）14:40 本地时间。 */
         const val FIXED_NOW = 1_757_380_800_000L

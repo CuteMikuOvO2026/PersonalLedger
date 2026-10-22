@@ -195,26 +195,50 @@
     <!-- AI 助手 -->
     <string name="nav_assistant">助手</string>
     <string name="ai_settings">AI 设置</string>
-    <string name="ai_settings_desc">用一句话记账。例如说「我今天买了咖啡 花了15」，助手会解析出金额、分类、备注与时间，你确认后再写入账本。</string>
-    <string name="ai_settings_privacy">开启后，你发送的消息、最近几轮对话与分类名称会通过网络发送到 DeepSeek 用于解析；账本记录本身不会上传。API Key 只保存在本机，并且已排除在云备份与换机迁移之外。</string>
+    <string name="ai_settings_desc">用一句话记账、改账、删账或统计。例如说「我今天买了咖啡 花了15」「把昨天打车那笔改成 30」「这个月餐饮花了多少」——助手会先给你一张卡片，你确认后才真正写入或删除。</string>
+    <string name="ai_settings_privacy">开启后，你发送的那句话、最近几轮你发过的话与分类名称会通过网络发送到 DeepSeek；账本记录本身不会上传——改账、删账、统计所用的账本数据都在本机匹配与计算，模型只负责听懂你要做什么。API Key 只保存在本机，并且已排除在云备份与换机迁移之外。</string>
     <string name="ai_api_key">API Key</string>
     <string name="ai_api_key_hint">粘贴 DeepSeek API Key</string>
     <string name="ai_api_key_empty">请先填入 API Key</string>
     <string name="ai_get_api_key">获取 API Key</string>
     <string name="ai_model">模型</string>
     <string name="ai_not_configured">请先在右上角「AI 设置」里填入 DeepSeek API Key</string>
-    <string name="ai_input_hint">描述这笔消费，例如「今天咖啡 15」</string>
+    <string name="ai_input_hint">说一句话，例如「今天咖啡 15」</string>
     <string name="ai_input_locked_hint">请先在右上角填入 API Key</string>
     <string name="ai_send">发送</string>
-    <string name="ai_empty_title">用一句话记账</string>
-    <string name="ai_empty_hint">例如：「我今天买了咖啡 花了15」</string>
+    <string name="ai_empty_title">用一句话管账</string>
+    <string name="ai_empty_hint">例如：\n「我今天买了咖啡 花了15」\n「这个月餐饮花了多少」\n「把昨天打车那笔改成 30」</string>
     <string name="ai_reply_empty">已收到</string>
     <string name="ai_draft_title">待确认的账目</string>
     <string name="ai_confirm">确认记账</string>
+    <string name="ai_confirm_delete">确认删除</string>
     <string name="ai_discard">忽略</string>
     <string name="ai_confirmed">已记账：%1$s</string>
     <string name="ai_discarded">已忽略这笔记录</string>
+    <string name="ai_cancelled">已取消这次操作</string>
     <string name="ai_already_confirmed">这笔已经处理过了</string>
+
+    <!-- 卡片标题：四类卡片各一个，标题本身就是「接下来会发生什么」的说明 -->
+    <string name="ai_card_title_new">待确认的账目</string>
+    <string name="ai_card_title_modify">待确认的修改</string>
+    <string name="ai_card_title_delete">待确认的删除</string>
+    <string name="ai_card_title_summary">统计结果</string>
+    <!-- 删除卡片上必须显示的警告：确认之后没有撤销入口 -->
+    <string name="ai_delete_warning">删除后无法恢复</string>
+    <string name="ai_label_before">原</string>
+    <string name="ai_label_after">改为</string>
+    <string name="ai_modified">已修改：%1$s</string>
+    <string name="ai_removed">已删除：%1$s</string>
+    <!-- 待确认的修改/删除，气泡末尾统一补一句，兜住模型偶尔写出的「已删除」 -->
+    <string name="ai_pending_reminder">以上操作需要你点确认后才会生效。</string>
+    <string name="ai_summary_done">统计完成。数字由本地账本算出。</string>
+
+    <!-- 没做成时的说明：每一条都告诉用户下一步该怎么说，而不是一句「失败」 -->
+    <string name="ai_target_not_found">账本里没有找到符合条件的记录。</string>
+    <string name="ai_target_ambiguous">找到 %1$d 笔符合条件的记录，请说得更具体一些（比如加上金额、日期或分类）。</string>
+    <string name="ai_target_too_many">匹配到 %1$d 笔，一次最多处理 %2$d 笔，请缩小范围。</string>
+    <string name="ai_target_no_change">没看出要改成什么，请说得具体一点（比如「改成 30 块」）。</string>
+    <string name="ai_nothing_to_do">我没听出要做什么。可以说「记一笔：咖啡 15」，或者「这个月花了多少」。</string>
     <string name="ai_clear_chat">清空对话</string>
     <string name="ai_clear_chat_message">确定要清空所有对话记录吗？已记入账本的记录不会受影响。</string>
     <string name="ai_clear_chat_done">对话已清空</string>
@@ -234,7 +258,9 @@
     <!-- 解析自测（评估集） -->
     <string name="ai_run_eval">解析自测</string>
     <string name="ai_run_eval_extended">解析自测（扩展集 · 过拟合检查）</string>
+    <string name="ai_run_eval_actions">指令自测（多意图路由）</string>
     <string name="ai_eval_confirm_message">将对 %1$d 条用例各调用一次 DeepSeek API，用于统计解析准确率。\n\n耗时约 1~2 分钟，会产生少量费用。是否继续？</string>
+    <string name="ai_eval_confirm_message_actions">将对 %1$d 条用例各调用一次 DeepSeek API，用于统计「这句话该做什么」的判定准确率。\n\n它只判动作类型（记账 / 修改 / 删除 / 统计 / 闲聊），不判账目字段；目标匹配由本地单测覆盖。耗时约 1~2 分钟，会产生少量费用。是否继续？</string>
     <string name="ai_eval_running">正在评估 %1$d/%2$d…</string>
     <string name="ai_eval_done_title">评估结果</string>
     <string name="ai_eval_logged">逐条明细已写入 logcat（TAG: AiEval）</string>
